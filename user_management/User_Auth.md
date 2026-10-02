@@ -1,12 +1,9 @@
+*Frontend*
 **Connection Between Files**
 package.json: Project setup, tells how to run the webapp
 index.html: Browser Page
 Main.jsx: Tells React where to render, makes react into the page
 App.jsx: Actual Content
-
-
-
-
 **package.json**
 1. Includes Metadata (name, privacy to not publish, version, module type to use import )
 2. Includes scripts (dev, tp start development server for preview, build, to compress code to upload whenn done, and preview, to locally test)
@@ -33,4 +30,6 @@ Syntax: const [varName, setterFunc] = useState(initialValue); Later on in the ht
 
 7. Include the HTML file as you'd do, and the CSS
 
-Future goals: I downloading a localhost https url with Tunnelmole: https://softwareengineeringstandard.com/2025/08/16/localhost-httpss/
+Future goals: Download https url with Tunnelmole: https://softwareengineeringstandard.com/2025/08/16/localhost-httpss/
+
+*Backend*

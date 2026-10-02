@@ -19,10 +19,11 @@ export default function AuthForms() {
   const handleSignup = async (event) => {
     event.preventDefault(); // Prevent the default browser behavior (reloading the whole webpage when a form submits).
 
-    // 4. FETCH API (HTTPS POST REQUEST) 'await'until the server responds, without freezing.
+    // 4. FETCH API (HTTPS POST REQUEST) 'await'until the server responds, without freezing. Currently we  use http since we got no certificats :-(
     // Tell server the payload format is JSON (application/json) and send the username & password as a JSON string.
     //Send to Docker
-    const response = await fetch('https://localhost:5000/api/signup', {
+    //Include /api on the link so that we know it's a request to the backend, not the frontend. 
+    const response = await fetch('http://localhost:80/api/signup', {
       method: 'POST', 
       headers: { 
         'Content-Type': 'application/json' 
@@ -39,7 +40,7 @@ export default function AuthForms() {
   const handleLogin = async (event) => {
     event.preventDefault();
 
-    const response = await fetch('https://localhost:5000/api/login', {
+    const response = await fetch('http://localhost:80/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: loginUsername, password: loginPassword })
@@ -59,7 +60,7 @@ export default function AuthForms() {
       <div style={styles.authCard}>
         
         <div style={styles.header}>
-          <h1 style={styles.title}> ❁ Welcome to Sandinify ❁</h1>
+          <h1 style={styles.title}> ❁ Welcome ❁</h1>
           <p style={styles.subtitle}>Create an account or log in to continue</p>
         </div>
 
