@@ -23,7 +23,7 @@ export default function AuthForms() {
     // Tell server the payload format is JSON (application/json) and send the username & password as a JSON string.
     //Send to Docker
     //Include /api on the link so that we know it's a request to the backend, not the frontend. 
-    const response = await fetch('http://localhost:80/api/signup', {
+    const response = await fetch('http://localhost:8080/api/signup', {
       method: 'POST', 
       headers: { 
         'Content-Type': 'application/json' 
@@ -40,7 +40,7 @@ export default function AuthForms() {
   const handleLogin = async (event) => {
     event.preventDefault();
 
-    const response = await fetch('http://localhost:80/api/login', {
+    const response = await fetch('http://localhost:8080/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: loginUsername, password: loginPassword })
