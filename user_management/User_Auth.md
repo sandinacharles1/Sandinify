@@ -1,4 +1,5 @@
-*Frontend*
+***Frontend***
+
 **Connection Between Files**
 package.json: Project setup, tells how to run the webapp
 index.html: Browser Page
@@ -32,4 +33,4 @@ Syntax: const [varName, setterFunc] = useState(initialValue); Later on in the ht
 
 Future goals: Download https url with Tunnelmole: https://softwareengineeringstandard.com/2025/08/16/localhost-httpss/
 
-*Backend*
+***Backend***
