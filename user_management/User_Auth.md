@@ -34,3 +34,5 @@ Syntax: const [varName, setterFunc] = useState(initialValue); Later on in the ht
 Future goals: Download https url with Tunnelmole: https://softwareengineeringstandard.com/2025/08/16/localhost-httpss/
 
 ***Backend***
+Server > Database Architecture
+<img width="701" height="1094" alt="User_Management_Database_Structure drawio" src="https://github.com/user-attachments/assets/642cf557-398e-486b-9d7a-e5a98285f439" />
