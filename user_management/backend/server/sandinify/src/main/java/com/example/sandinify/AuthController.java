@@ -16,6 +16,7 @@ public class AuthController {
     public AuthController(UserRepository userRepository) {
         this.userRepository = userRepository;
     }
+    
 
     public record AuthRequest(String username, String password) {}
     public record MessageResponse(String message) {}
