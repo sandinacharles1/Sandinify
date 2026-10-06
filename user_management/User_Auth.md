@@ -34,6 +34,10 @@ Syntax: const [varName, setterFunc] = useState(initialValue); Later on in the ht
 Future goals: Download https url with Tunnelmole: https://softwareengineeringstandard.com/2025/08/16/localhost-httpss/
 
 ***Backend***
+Docker Setup
+
+<img width="722" height="421" alt="DockerSetup drawio" src="https://github.com/user-attachments/assets/b303b8f2-6805-47a2-ba75-7eed41ced5e9" />
+
 Rate Limiter Architecture
 
 <img width="702" height="1022" alt="user_management_rate_limiter drawio" src="https://github.com/user-attachments/assets/ad8f9ee7-176e-4267-87c6-d16901e93cc0" />
