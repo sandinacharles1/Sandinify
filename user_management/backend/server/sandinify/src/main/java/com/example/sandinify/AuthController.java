@@ -1,52 +1,102 @@
 package com.example.sandinify;
 
-import org.springframework.web.bind.annotation.*; //necessary to use annotations like @RestController, @RequestMapping, @CrossOrigin, @PostMapping, and @RequestBody
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
+import org.springframework.web.bind.annotation.*;
+
 import java.util.Optional;
-import org.springframework.security.crypto.argon2.Argon2PasswordEncoder; //necessary to use the Argon2PasswordEncoder class for password hashing
 
-@RestController //necessary to make this class a REST controller, which can handle HTTP requests and return responses
-@RequestMapping("/api") //necessary becasue the frontend is sending requests to /api/signup and /api/login
-@CrossOrigin(origins = "http://localhost:5173") //necessary to allow cross-origin requests from the frontend running on localhost:5173
+@RestController
+@RequestMapping("/api")
+@CrossOrigin(origins = "http://localhost:5173")
 public class AuthController {
+
+    private final UserRepository userRepository;  //Functions to edit User.java database
+    private final JwtService jwtService;  //Creates and verifies JWT tokens. Used for access tokens.
+    private final RefreshTokenService refreshTokenService; //Creates and verifies refresh tokens. 
+    private final Argon2PasswordEncoder encoder = Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8(); //give the encoder a default settting, compared to the other previous which didnt need the = becauase it already had a setting default.
     
-    //private final, no class can inherit 
-    private final Argon2PasswordEncoder encoder = Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8();
-    private final UserRepository userRepository;
-    // Spring sees this constructor and hands in the repository automatically
-    public AuthController(UserRepository userRepository) {
+    //* Initalize the controller with the correct dependencies
+    public AuthController(UserRepository userRepository,
+                          JwtService jwtService,
+                          RefreshTokenService refreshTokenService) {
         this.userRepository = userRepository;
-    }
-    
+        this.jwtService = jwtService;
+        this.refreshTokenService = refreshTokenService;
+    } 
 
+    //* Declare the request and response objects for the endpoints. These are simple records that hold the data we need. Record is what it sounds like, a record of data. It is immutable and has a constructor, getters, equals, hashCode, and toString methods automatically generated.
     public record AuthRequest(String username, String password) {}
+    public record RefreshRequest(String refreshToken) {}
     public record MessageResponse(String message) {}
+    public record LoginResponse(String message, String accessToken, String refreshToken) {}
+    public record TokenResponse(String message, String accessToken) {}
 
-    @PostMapping("/signup") //the @RequestBody gets turned intot a AuthRequest object, which is the usrname and password
-    public MessageResponse signup(@RequestBody AuthRequest request) {
+    @PostMapping("/signup")
+    public ResponseEntity<LoginResponse> signup(@RequestBody AuthRequest request) throws Exception {
         String username = request.username();
         String password = request.password();
-        String hash = encoder.encode(password);
-        
-        if (userRepository.existsByUsername(username)) {
-            return new MessageResponse("Username already taken");
-        }
-        userRepository.save(new User(username, hash));
 
-        System.out.println("Signup request for: " + username);
-        return new MessageResponse("Signup successful for " + username); // what it returns to the user. In the future, it will be a page and a token
+        if (username == null || password == null || username.isBlank() || password.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(new LoginResponse("Username and password required", null, null));
+        }
+        if (userRepository.existsByUsername(username)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(new LoginResponse("Username already taken", null, null));
+        }
+
+        User saved = userRepository.save(new User(username, encoder.encode(password)));
+
+        String accessToken = jwtService.createAccessToken(saved.getUsername());
+        String refreshToken = refreshTokenService.create(saved.getId());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new LoginResponse("Signup successful", accessToken, refreshToken));
     }
 
     @PostMapping("/login")
-    public MessageResponse login(@RequestBody AuthRequest request) {
-        String username = request.username();
-        String password = request.password();
-        String hash = encoder.encode(password);
-
-        Optional<User> user = userRepository.findByUsername(username);
-        
-        if (user.isPresent() && encoder.matches(password, user.get().getPasswordHash())) {
-            return new MessageResponse("Login successful for " + username);
+    public ResponseEntity<LoginResponse> login(@RequestBody AuthRequest request) throws Exception {
+        if (request.username() == null || request.password() == null) {
+            return ResponseEntity.badRequest().body(new LoginResponse("Username and password required", null, null));
         }
-        return new MessageResponse("Invalid username or password");
+
+        Optional<User> user = userRepository.findByUsername(request.username());
+
+        if (user.isPresent() && encoder.matches(request.password(), user.get().getPasswordHash())) {
+            String accessToken = jwtService.createAccessToken(user.get().getUsername());
+            String refreshToken = refreshTokenService.create(user.get().getId());
+            return ResponseEntity.ok(new LoginResponse("Login successful", accessToken, refreshToken));
+        }
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new LoginResponse("Invalid username or password", null, null));
     }
-} 
+
+    @PostMapping("/refresh")
+    public ResponseEntity<TokenResponse> refresh(@RequestBody RefreshRequest request) throws Exception {
+        Optional<RefreshToken> token = refreshTokenService.validate(request.refreshToken());
+        if (token.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new TokenResponse("Session expired", null));
+        }
+
+        Optional<User> user = userRepository.findById(token.get().getUserId());
+        if (user.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new TokenResponse("Session expired", null));
+        }
+
+        String accessToken = jwtService.createAccessToken(user.get().getUsername());
+        return ResponseEntity.ok(new TokenResponse("Refreshed", accessToken));
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<MessageResponse> logout(@RequestBody RefreshRequest request) {
+        refreshTokenService.revoke(request.refreshToken());
+        return ResponseEntity.ok(new MessageResponse("Logged out"));
+    }
+
+    // A protected endpoint to test with. The filter puts "username" on the request.
+    @GetMapping("/me")
+    public MessageResponse me(@RequestAttribute("username") String username) {
+        return new MessageResponse("Hello " + username);
+    }
+}

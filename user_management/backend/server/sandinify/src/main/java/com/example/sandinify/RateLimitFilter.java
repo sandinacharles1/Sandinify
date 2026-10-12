@@ -8,8 +8,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-
+import org.springframework.core.annotation.Order;
 @Component
+@Order(1)  
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private final RateLimiterService limiter;
@@ -30,7 +31,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
         try {
             String address = request.getRemoteAddr();
-            boolean allowed = limiter.tryTake("ip:" + address, 100, 0.5);
+            boolean allowed = limiter.tryTake("ip:" + address, 3, 0.5);
 
             if (!allowed) {
                 response.setStatus(429);

@@ -21,7 +21,8 @@ public class User {
         this.username = username;
         this.passwordHash = passwordHash;
     }
-
+   
+    public Long getId() { return id; }
     public String getUsername() { return username; }
     public String getPasswordHash() { return passwordHash; }
 }
