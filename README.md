@@ -3,7 +3,8 @@
 **Sandinify** is a personal project I'm building to learn how backend systems and system design work. It is a music application heavily inspired by Spotify, but with a unique twist that lets you analyze the actual frequencies of a song and find matching books!
 
 ---
-
+## Homepage
+![Sandinify Homepage](image.png)
 ## System Design Whiteboard (opens Drawio diagram)
 
 https://viewer.diagrams.net/?tags=%7B%7D&lightbox=1&highlight=0000ff&edit=_blank&layers=1&nav=1&title=Music%20music%20MUSIC.drawio&dark=0#Uhttps%3A%2F%2Fdrive.google.com%2Fuc%3Fid%3D12FPy8qU-1mB83VXN_FH-Q3BzmRCVQ7qT%26export%3Ddownload
