@@ -1,0 +1,13 @@
+# IDE and local workspace files
+.idea/
+
+# Installed frontend dependencies and build output
+**/node_modules/
+/user_management/frontend/dist/
+
+# JVM crash logs
+hs_err_pid*.log
+.idea/
+*.iml
+**/node_modules/
+**/dist/
