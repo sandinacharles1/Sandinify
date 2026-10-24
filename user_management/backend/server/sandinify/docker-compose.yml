@@ -15,7 +15,11 @@ services:
 
   redis:
     image: redis:7
-
+  #Create container for Jaeger to visualize and conect to OpenTelemetry. WE can reach it directly under docker-compose
+  jaeger:
+    image: jaegertracing/all-in-one:1.49
+    ports:
+      - "16686:16686"
   app:
     build: .
     ports:
@@ -27,6 +31,13 @@ services:
       SPRING_DATA_REDIS_HOST: redis
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       JWT_SECRET: ${JWT_SECRET}
+
+    # OpenTelemetry configuration. Export to Jeager running in the same docker-compose network
+      OTEL_SERVICE_NAME: sandinify-auth
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
     depends_on:
       postgres:
         condition: service_healthy
