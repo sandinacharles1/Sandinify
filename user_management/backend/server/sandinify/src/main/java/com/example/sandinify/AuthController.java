@@ -2,7 +2,6 @@ package com.example.sandinify;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Optional;
@@ -15,15 +14,17 @@ public class AuthController {
     private final UserRepository userRepository;  //Functions to edit User.java database
     private final JwtService jwtService;  //Creates and verifies JWT tokens. Used for access tokens.
     private final RefreshTokenService refreshTokenService; //Creates and verifies refresh tokens. 
-    private final Argon2PasswordEncoder encoder = Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8(); //give the encoder a default settting, compared to the other previous which didnt need the = becauase it already had a setting default.
+    private final PasswordService passwordService;
     
     //* Initalize the controller with the correct dependencies
     public AuthController(UserRepository userRepository,
                           JwtService jwtService,
-                          RefreshTokenService refreshTokenService) {
+                          RefreshTokenService refreshTokenService,
+                          PasswordService passwordService) {
         this.userRepository = userRepository;
         this.jwtService = jwtService;
         this.refreshTokenService = refreshTokenService;
+        this.passwordService = passwordService;
     } 
 
     //* Declare the request and response objects for the endpoints. These are simple records that hold the data we need. Record is what it sounds like, a record of data. It is immutable and has a constructor, getters, equals, hashCode, and toString methods automatically generated.
@@ -47,7 +48,7 @@ public class AuthController {
                     .body(new LoginResponse("Username already taken", null, null));
         }
 
-        User saved = userRepository.save(new User(username, encoder.encode(password)));
+        User saved = userRepository.save(new User(username, passwordService.hash(password)));
 
         String accessToken = jwtService.createAccessToken(saved.getUsername());
         String refreshToken = refreshTokenService.create(saved.getId());
@@ -63,7 +64,7 @@ public class AuthController {
 
         Optional<User> user = userRepository.findByUsername(request.username());
 
-        if (user.isPresent() && encoder.matches(request.password(), user.get().getPasswordHash())) {
+        if (user.isPresent() && passwordService.matches(request.password(), user.get().getPasswordHash())) {
             String accessToken = jwtService.createAccessToken(user.get().getUsername());
             String refreshToken = refreshTokenService.create(user.get().getId());
             return ResponseEntity.ok(new LoginResponse("Login successful", accessToken, refreshToken));

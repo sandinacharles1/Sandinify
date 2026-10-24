@@ -3,7 +3,7 @@ package com.example.sandinify;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
-
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import java.util.List;
 
 @Service
@@ -46,6 +46,7 @@ public class RateLimiterService {
         this.redis = redis;
     }
 
+    @WithSpan ("RateLimiterService.tryTake")
     public boolean tryTake(String key, int capacity, double refillPerSecond) {
         Long result = redis.execute(
                 SCRIPT,

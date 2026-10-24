@@ -6,6 +6,9 @@ import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jose.crypto.MACVerifier;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+
+import io.opentelemetry.instrumentation.annotations.WithSpan;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -21,6 +24,7 @@ public class JwtService {
     }
 
     // Makes the signed token. Expires in 15 minutes.
+    @WithSpan ("JwtService.createAccessToken")
     public String createAccessToken(String username) throws Exception {
         Date now = new Date();
         Date expires = new Date(now.getTime() + 15 * 60 * 1000);
@@ -35,7 +39,7 @@ public class JwtService {
         jwt.sign(new MACSigner(secret));
         return jwt.serialize();
     }
-
+    @WithSpan ("JwtService.verify")
     // Checks the token. Returns the username if valid, or null if not.
     public String verify(String token) {
         try {
