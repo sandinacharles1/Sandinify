@@ -32,6 +32,10 @@ services:
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       JWT_SECRET: ${JWT_SECRET}
 
+      RATELIMIT_CAPACITY: ${RATELIMIT_CAPACITY:-100}
+      RATELIMIT_REFILL: ${RATELIMIT_REFILL:-0.5}
+      OTEL_TRACES_SAMPLER: parentbased_traceidratio
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_SAMPLE:-1.0} 
     # OpenTelemetry configuration. Export to Jeager running in the same docker-compose network
       OTEL_SERVICE_NAME: sandinify-auth
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318

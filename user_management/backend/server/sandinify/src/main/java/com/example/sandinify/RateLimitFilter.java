@@ -5,6 +5,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -14,9 +15,13 @@ import org.springframework.core.annotation.Order;
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private final RateLimiterService limiter;
+    private final int capacity;
+    private final double refill;
 
-    public RateLimitFilter(RateLimiterService limiter) {
+    public RateLimitFilter(RateLimiterService limiter, @Value("${ratelimit.capacity:100}") int capacity, @Value("${ratelimit.refill:0.5}") double refill) {
         this.limiter = limiter;
+        this.capacity = capacity;
+        this.refill = refill;
     }
 
     @Override
@@ -31,7 +36,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
         try {
             String address = request.getRemoteAddr();
-            boolean allowed = limiter.tryTake("ip:" + address, 3, 0.5);
+            boolean allowed = limiter.tryTake("ip:" + address, capacity, refill);
 
             if (!allowed) {
                 response.setStatus(429);
