@@ -4,7 +4,7 @@ import { Pudding, Sparkle } from './Decor';
 
 // The top of the page: the pink banner (title, pictures, buttons) and the tab bar under it.
 // "username" is a placeholder. Later it will come from the logged-in user.
-export default function Header({ username = 'username' }) {
+export default function Header({ username = 'username', onUpload }) {
   const tabs = ['Song Editor', 'Top Songs', 'AI Music Finder', 'AI Book Finder', 'Friends'];
 
   return (
@@ -32,7 +32,7 @@ export default function Header({ username = 'username' }) {
         <div style={styles.bannerRight}>
           <div style={styles.miniStamp}>♪</div>
           <button style={styles.bannerButton}>Hi, {username}!</button>
-          <button style={styles.bannerButton}>Upload</button>
+          <button type="button" style={styles.bannerButton} onClick={onUpload}>Upload</button>
           <button style={styles.bannerButton}>Log Out</button>
         </div>
       </div>

@@ -7,7 +7,7 @@
 // 1. IMPORT STATEMENTS: Bring in tools from React library. Syntax: import { toolName } from 'libraryName'; 'useState' is used to store & update data.
 import React, { useState } from 'react';
 
-export default function AuthForms() {
+export default function AuthForms({ onAuthenticated }) {
   // 2. STATE DEFINITIONS: Storing input values in browser memory. Syntax: const [varName, setterFunc] = useState(initialValue);
   const [signupUsername, setSignupUsername] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
@@ -67,6 +67,7 @@ export default function AuthForms() {
           code: `HTTP ${response.status}`,
           message: result.message || 'Request completed successfully.'
         });
+        onAuthenticated(username);
         return;
       }
 

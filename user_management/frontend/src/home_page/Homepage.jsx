@@ -9,7 +9,7 @@ import { styles } from './styles';
 // *********************************************
 // This file only arranges the pieces: Header on top, Sidebar on the left, songs on the right.
 // Everything shown is fake placeholder data. Nothing here talks to the backend yet.
-export default function HomePage() {
+export default function HomePage({ username = 'username', onUpload }) {
   // Fake songs. Later this list will come from your server.
   const recentSongs = [
     {
@@ -59,7 +59,7 @@ export default function HomePage() {
   return (
     <div style={styles.page}>
       <div style={styles.wrapper}>
-        <Header username="username" />
+        <Header username={username} onUpload={onUpload} />
 
         <div style={styles.body}>
           <Sidebar />
@@ -70,9 +70,11 @@ export default function HomePage() {
               <div style={styles.stamp}>♪</div>
 
               <div style={styles.profileRight}>
-                <h2 style={styles.username}>username</h2>
+                <h2 style={styles.username}>{username}</h2>
                 <div style={styles.profileButtons}>
-                  <button style={styles.profileButton}>Upload Song</button>
+                  <button type="button" style={styles.profileButton} onClick={onUpload}>
+                    Upload Song
+                  </button>
                   <button style={styles.profileButton}>New Playlist</button>
                   <button style={styles.profileButton}>Edit Profile</button>
                 </div>
