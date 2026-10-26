@@ -1,5 +1,11 @@
-package com.example.sandinify;
+package com.example.sandinify.auth.api;
 
+import com.example.sandinify.JwtService;
+import com.example.sandinify.PasswordService;
+import com.example.sandinify.RefreshToken;
+import com.example.sandinify.RefreshTokenService;
+import com.example.sandinify.User;
+import com.example.sandinify.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;

@@ -1,11 +1,10 @@
-package com.example.sandinify.gateway;
-
+package com.example.sandinify.songs.api;
+import com.example.sandinify.songs.api.S3StorageService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -20,43 +19,51 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/api/songs")
 @CrossOrigin(origins = "http://localhost:5173")
-public class SongDataApiGateway {
+public class SongUploadController {
+    private final S3StorageService s3StorageService;
 
-    public record UploadResponse(String message) {}
+    // Inject S3StorageService via constructor dependency injection
+    public SongUploadController(S3StorageService s3StorageService) {
+        this.s3StorageService = s3StorageService;
+    }
+
+    public record UploadResponse(String message, String fileUrl) {}
 
     @PostMapping(path = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<UploadResponse> uploadSong(
             @RequestParam("file") MultipartFile file,
             @RequestParam("name") String name,
-            @RequestParam("username") String username,
-            @RequestAttribute("username") String authenticatedUsername) {
+            @RequestParam("username") String username) {
 
         if (file.isEmpty()) {
             return ResponseEntity.badRequest()
-                    .body(new UploadResponse("Choose a song file."));
+                    .body(new UploadResponse("Choose a song file.", null));
         }
         if (name.isBlank() || name.length() > 200) {
             return ResponseEntity.badRequest()
-                    .body(new UploadResponse("Song name is required and must be 200 characters or fewer."));
+                    .body(new UploadResponse("Song name is required and must be 200 characters or fewer.", null));
         }
-        if (!username.equals(authenticatedUsername)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(new UploadResponse("The username must match the signed-in account."));
+        if (username.isBlank() || username.length() > 200) {
+            return ResponseEntity.badRequest()
+                    .body(new UploadResponse("Artist name is required and must be 200 characters or fewer.", null));
         }
 
-        // TODO: Orchestrate uploadSongToObjectStorage(...) and saveSongToDatabase(...).
-        // Prefer storage first, then database, so a database row never points to a
-        // file that was not stored. If the database save fails, delete the stored
-        // object or queue cleanup so an orphaned file is not left behind.
-        //
-        // TODO: On success, return HTTP 201 Created with the new song's ID.
-        // This endpoint is intentionally not wired to storage or a repository yet.
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
-                .body(new UploadResponse("Song uploading has not been implemented yet."));
+        try {
+            String fileUrl = s3StorageService.uploadAudioFile(file);
+            // TODO: AUDIO ANALYSIS TO GET GENRE, MOOD, AND TAGS
+            // TODO: DATABASE STAGE - Save title, username, and fileUrl to PostgreSQL via a SongRepository: songRepository.save(new Song(name, username, fileUrl));
+            
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(new UploadResponse("Song uploaded successfully to AWS S3!", fileUrl));
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new UploadResponse("Failed to upload song to storage: " + e.getMessage(), null));
+        }
     }
 
     /*
-     * DATABASE STAGE (planned)
+     ! DATABASE STAGE (planned)
      *
      * Add a service method conceptually like:
      *
@@ -120,7 +127,7 @@ public class SongDataApiGateway {
      */
 
     /*
-     * OBJECT-STORAGE STAGE (planned)
+     ! OBJECT-STORAGE STAGE (planned)
      *
      * Add a service method conceptually like:
      *
@@ -138,7 +145,7 @@ public class SongDataApiGateway {
      */
 
     /*
-     * FUTURE AUDIO-ANALYSIS STAGE (not implemented)
+     ! FUTURE AUDIO-ANALYSIS STAGE 
      *
      * The genre, mood, and tags analyzer may be written in Python. Java cannot
      * directly import a .py module as a normal Java class. A common approach is

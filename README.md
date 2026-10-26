@@ -54,8 +54,9 @@ RateLimitFilter ----> RateLimiterService ----> Redis (Lua token bucket)
    v
 JwtAuthFilter (verifies access token on protected routes)
    |
-   v
-AuthController ----> Services ----> Repositories ----> PostgreSQL
+   +--> auth.api.AuthController ----> Auth Services ----> Repositories ----> PostgreSQL
+   |
+   +--> songs.api.SongUploadController ----> Song upload flow (planned)
 ```
 
 ### Project Structure
@@ -64,7 +65,8 @@ AuthController ----> Services ----> Repositories ----> PostgreSQL
 |---|---|
 | `RateLimiterService.java` | Token bucket logic, executed as an atomic Lua script in Redis |
 | `RateLimitFilter.java` | Runs first on every request; identifies the client by IP and blocks when over the limit |
-| `AuthController.java` | REST endpoints; validates input and returns the appropriate HTTP status |
+| `auth/api/AuthController.java` | Authentication REST endpoints; validates input and returns the appropriate HTTP status |
+| `songs/api/SongUploadController.java` | Song upload REST endpoint; currently a scaffold for the future upload flow |
 | `User.java` / `UserRepository.java` | JPA entity and repository for the users table |
 | `RefreshToken.java` / `RefreshTokenRepository.java` / `RefreshTokenService.java` | Refresh token persistence, plus create, hash, validate, and revoke |
 | `JwtService.java` | Creates and verifies signed JWT access tokens |

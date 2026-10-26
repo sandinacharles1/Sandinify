@@ -2,15 +2,20 @@ import React, { useState } from 'react';
 import Header from './Header';
 import { colors, styles } from './Styles';
 import './UploadPage.css';
+import { uploadSong } from '../api/songApi';
 
 export default function UploadPage({ username, onBack, onUpload }) {
   const [title, setTitle] = useState('');
+  const [artistName, setArtistName] = useState(username);
   const [file, setFile] = useState(null);
   const [fileError, setFileError] = useState('');
+  const [uploadState, setUploadState] = useState({ type: 'idle', message: '' });
+  const [isUploading, setIsUploading] = useState(false);
 
   function handleFileChange(event) {
     const selectedFile = event.target.files?.[0] || null;
     setFileError('');
+    setUploadState({ type: 'idle', message: '' });
 
     if (selectedFile && !selectedFile.name.toLowerCase().endsWith('.mp3')) {
       setFile(null);
@@ -20,6 +25,32 @@ export default function UploadPage({ username, onBack, onUpload }) {
     }
 
     setFile(selectedFile);
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    if (!file || !title.trim() || !artistName.trim() || isUploading) return;
+
+    setIsUploading(true);
+    setUploadState({ type: 'loading', message: 'Uploading your song…' });
+    try {
+      const result = await uploadSong({
+        file,
+        name: title.trim(),
+        username: artistName.trim()
+      });
+      setUploadState({
+        type: 'success',
+        message: `${result.message || 'Song uploaded successfully.'} Song details are not saved to PostgreSQL yet.`
+      });
+    } catch (error) {
+      setUploadState({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'The upload failed. Please try again.'
+      });
+    } finally {
+      setIsUploading(false);
+    }
   }
 
   return (
@@ -34,10 +65,10 @@ export default function UploadPage({ username, onBack, onUpload }) {
           <section style={uploadStyles.card} aria-labelledby="upload-title">
             <h2 id="upload-title" style={uploadStyles.heading}>Upload a song</h2>
             <p style={uploadStyles.intro}>
-              Choose a title and an MP3 file. Your artist name comes from your account.
+              Choose a title, artist name, and MP3 file.
             </p>
 
-            <form style={uploadStyles.form} onSubmit={(event) => event.preventDefault()}>
+            <form style={uploadStyles.form} onSubmit={handleSubmit}>
               <label htmlFor="song-title" style={uploadStyles.label}>Song title</label>
               <input
                 id="song-title"
@@ -54,9 +85,12 @@ export default function UploadPage({ username, onBack, onUpload }) {
               <input
                 id="song-artist"
                 type="text"
-                value={username}
-                readOnly
-                style={{ ...uploadStyles.input, ...uploadStyles.readOnlyInput }}
+                maxLength={200}
+                required
+                value={artistName}
+                onChange={(event) => setArtistName(event.target.value)}
+                placeholder="Enter the artist name"
+                style={uploadStyles.input}
               />
             
               <label htmlFor="song-file" style={uploadStyles.label}>MP3 file</label>
@@ -72,17 +106,36 @@ export default function UploadPage({ username, onBack, onUpload }) {
               {file && <span style={uploadStyles.fileName}>{file.name}</span>}
               {fileError && <p role="alert" style={uploadStyles.error}>{fileError}</p>}
 
-              <p style={uploadStyles.notice} role="status">
-                This is the upload page design only. Song saving will be enabled after the
-                backend and object storage are added.
-              </p>
+              {uploadState.message && (
+                <p
+                  role={uploadState.type === 'error' ? 'alert' : 'status'}
+                  style={
+                    uploadState.type === 'error'
+                      ? uploadStyles.error
+                      : uploadState.type === 'success'
+                        ? uploadStyles.success
+                        : uploadStyles.notice
+                  }
+                >
+                  {uploadState.message}
+                </p>
+              )}
 
               <div style={uploadStyles.actions}>
                 <button type="button" onClick={onBack} style={uploadStyles.cancelButton}>
                   Cancel
                 </button>
-                <button type="submit" disabled style={uploadStyles.disabledButton}>
-                  Upload unavailable
+                <button
+                  type="submit"
+                  disabled={!file || !title.trim() || !artistName.trim() || isUploading}
+                  style={{
+                    ...uploadStyles.submitButton,
+                    ...((!file || !title.trim() || !artistName.trim() || isUploading)
+                      ? uploadStyles.disabledButton
+                      : {})
+                  }}
+                >
+                  {isUploading ? 'Uploading…' : 'Upload song'}
                 </button>
               </div>
             </form>
@@ -146,9 +199,6 @@ const uploadStyles = {
     color: colors.darkGreen,
     font: 'inherit',
   },
-  readOnlyInput: {
-    background: '#f5edf0',
-  },
   fileInput: {
     width: '100%',
     boxSizing: 'border-box',
@@ -174,6 +224,14 @@ const uploadStyles = {
     color: colors.darkGreen,
     lineHeight: 1.4,
   },
+  success: {
+    margin: '10px 0 0',
+    padding: '12px',
+    borderRadius: '8px',
+    background: '#edf7e8',
+    color: colors.darkGreen,
+    lineHeight: 1.4,
+  },
   actions: {
     display: 'flex',
     justifyContent: 'flex-end',
@@ -189,7 +247,7 @@ const uploadStyles = {
     font: 'inherit',
     cursor: 'pointer',
   },
-  disabledButton: {
+  submitButton: {
     padding: '8px 16px',
     border: `1px solid ${colors.pinkDeep}`,
     borderRadius: '8px',
@@ -197,6 +255,9 @@ const uploadStyles = {
     color: colors.link,
     font: 'inherit',
     fontWeight: '700',
+    cursor: 'pointer',
+  },
+  disabledButton: {
     opacity: 0.6,
     cursor: 'not-allowed',
   },
