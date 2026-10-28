@@ -56,7 +56,7 @@ JwtAuthFilter (verifies access token on protected routes)
    |
    +--> auth.api.AuthController ----> Auth Services ----> Repositories ----> PostgreSQL
    |
-   +--> songs.api.SongUploadController ----> Song upload flow (planned)
+   +--> songs.api.SongUploadController ----> S3StorageService + SongRepository ----> AWS S3 + PostgreSQL
 ```
 
 ### Project Structure
@@ -66,13 +66,16 @@ JwtAuthFilter (verifies access token on protected routes)
 | `RateLimiterService.java` | Token bucket logic, executed as an atomic Lua script in Redis |
 | `RateLimitFilter.java` | Runs first on every request; identifies the client by IP and blocks when over the limit |
 | `auth/api/AuthController.java` | Authentication REST endpoints; validates input and returns the appropriate HTTP status |
-| `songs/api/SongUploadController.java` | Song upload REST endpoint; currently a scaffold for the future upload flow |
+| `songs/api/SongUploadController.java` | Uploads a song to S3 and saves its title, artist, S3 URL, and optional genre, mood, and tags |
+| `songs/Song.java` / `songs/SongRepository.java` | JPA mapping and repository for song metadata in PostgreSQL |
 | `User.java` / `UserRepository.java` | JPA entity and repository for the users table |
 | `RefreshToken.java` / `RefreshTokenRepository.java` / `RefreshTokenService.java` | Refresh token persistence, plus create, hash, validate, and revoke |
 | `JwtService.java` | Creates and verifies signed JWT access tokens |
 | `JwtAuthFilter.java` | Verifies the access token on protected routes |
 | `SandinifyApplicationTests.java` | Integration test suite |
 | `loadtest.js` | k6 load test |
+
+Hibernate's `ddl-auto=update` creates or updates the mapped PostgreSQL tables, including `songs`, when the application starts. Docker Compose provisions the PostgreSQL database itself (`sandinify`); when running against a separately installed PostgreSQL server, create that database first.
 
 ## Design Decisions
 
