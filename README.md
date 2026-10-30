@@ -1,9 +1,36 @@
 # Sandinify
 
 **Sandinify** is a personal project I'm building to learn how backend systems and system design work. It is a music application heavily inspired by Spotify, but with a unique twist that lets you analyze the actual frequencies of a song and find matching books!
+## Table of Contents
+* [Homepage Preview](#homepage-preview)
+* [Sandinify User Authentication Section](#sandinify-user-authentication-section)
+  * [Features](#features)
+  * [Tech Stack](#tech-stack)
+  * [API Endpoints](#api-endpoints)
+  * [Architecture](#architecture)
+    * [Project Structure](#project-structure)
+  * [Design Decisions](#design-decisions)
+    * [Rate limiter: token bucket](#rate-limiter-token-bucket)
+    * [Why Redis?](#why-redis)
+    * [Why Lua for atomicity?](#why-lua-for-atomicity)
+    * [Why not handle it in Java?](#why-not-handle-it-in-java)
+    * [Failure behavior](#failure-behavior)
+    * [Authentication](#authentication)
+  * [Unit Testing](#testing)
+  * [Load Testing and Distributed Tracing](#load-testing-and-distributed-tracing)
+    * [Initial results](#initial-results)
+  * [Getting Started](#getting-started)
+    * [Prerequisites](#prerequisites)
+    * [Run](#run)
+    * [Run the tests](#run-the-tests)
+    * [Run the load test](#run-the-load-test)
+  * [What I Learned](#what-i-learned)
+* [Sandinify User Song Upload Section](#sandinify-user-song-upload-section)
+  * [Upload System Design](#upload-design)
+  * [Feature Extraction System Design](#feature-extraction-design)
 
 ---
-## Homepage
+## Homepage Preview
 ![Sandinify Homepage](image.png)
 
 # Sandinify User Authentication Section
@@ -201,3 +228,11 @@ k6 run loadtest.js
 ## What I Learned
 
 While writing the integration tests, every test was failing and the cause was not obvious. Instead of trying random fixes, I narrowed the problem down: since all tests failed, I suspected shared configuration rather than individual logic. I confirmed the app worked outside the test environment by creating an account manually, which isolated the issue to the test setup. Reading the logs more carefully showed that the test environment was not loading configuration properties correctly and that the JWT secret property was referenced with the wrong case. The main lesson was to gather evidence and change my approach when something isn't working, instead of repeating the same fix.
+
+
+# Sandinify User Song Upload Section
+## Upload Design
+<img width="1156" height="1351" alt="Song Upload Architecture (1)" src="https://github.com/user-attachments/assets/6df5a25b-ef5c-4436-81f6-12ef5e0653e2" />
+
+## Feature Extraction Design
+<img width="596" height="2619" alt="Song Upload Architecture" src="https://github.com/user-attachments/assets/184e37dc-a0f7-4845-8602-8fae1f76f118" />
