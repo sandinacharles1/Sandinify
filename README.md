@@ -28,7 +28,7 @@
 * [Sandinify User Song Upload Section](#sandinify-user-song-upload-section)
   * [Upload System Design](#upload-design)
   * [Feature Extraction System Design](#feature-extraction-design)
-
+* [Upcoming Features](#upcoming-features)
 ---
 ## Homepage Preview
 ![Sandinify Homepage](image.png)
@@ -236,3 +236,12 @@ While writing the integration tests, every test was failing and the cause was no
 
 ## Feature Extraction Design
 <img width="596" height="2619" alt="Song Upload Architecture" src="https://github.com/user-attachments/assets/184e37dc-a0f7-4845-8602-8fae1f76f118" />
+
+# Upcoming Features
+I am actively working on expanding Sandinify with more advanced system features and interactive modules:
+
+* **Song Editor** – Edit and tweak tracks directly within the platform with DSP.
+* **Top Songs** – Dynamic dashboard displaying trending tracks based on user activity.
+* **AI Music Finder** – Discover hidden audio patterns through advanced frequency analytics.
+* **AI Book Finder** – Map song frequency profiles directly to thematic literature recommendations.
+* **Friends** – Connect with other music-loving developers to share and review audio analysis results.
