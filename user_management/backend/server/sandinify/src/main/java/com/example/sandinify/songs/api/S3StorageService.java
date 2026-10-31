@@ -32,20 +32,17 @@ public class S3StorageService {
     }
 
     public String uploadAudioFile(MultipartFile file) throws IOException {
-        // Generate a unique file name to prevent name collisions
-        String uniqueFileName = UUID.randomUUID() + "_" + file.getOriginalFilename();
+        String key = "songs/" + UUID.randomUUID() + ".mp3";
 
         PutObjectRequest putRequest = PutObjectRequest.builder()
                 .bucket(bucketName)
-                .key(uniqueFileName)
+                .key(key)
                 .contentType(file.getContentType())
                 .build();
 
-        // Upload file stream to AWS S3
-        s3Client.putObject(putRequest, 
+        s3Client.putObject(putRequest,
                 RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
 
-        // Return the S3 URL to save in your PostgreSQL database later
-        return String.format("https://%s.s3.amazonaws.com/%s", bucketName, uniqueFileName);
-    }
+        return key;
+        }
 }
