@@ -5,13 +5,14 @@ import com.example.sandinify.songs.SongRepository;
 import com.example.sandinify.songs.SongStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class SongUploadControllerTest {
@@ -29,20 +30,25 @@ class SongUploadControllerTest {
         String s3Key = "songs/abc.mp3";
         when(storageService.uploadAudioFile(file)).thenReturn(s3Key);
 
-        // The controller uses the id of the saved row, so the mock must return a Song.
-        when(songRepository.save(any(Song.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(songRepository.save(any(Song.class))).thenAnswer(invocation -> {
+            Song savedSong = invocation.getArgument(0);
+            ReflectionTestUtils.setField(savedSong, "id", 42L);
+            return savedSong;
+        });
 
         var response = controller.uploadSong(file, "Song title", "Stage name");
 
         assertEquals(201, response.getStatusCode().value());
+        assertEquals(42L, response.getBody().songId());
         assertEquals("PENDING", response.getBody().status());
-        verify(storageService).uploadAudioFile(file);
-        verify(songRepository).save(argThat(song ->
+
+        var order = inOrder(storageService, songRepository, analysisQueue);
+        order.verify(storageService).uploadAudioFile(file);
+        order.verify(songRepository).save(argThat(song ->
                 song.getTitle().equals("Song title")
                         && song.getArtistName().equals("Stage name")
                         && song.getS3Key().equals(s3Key)
                         && song.getStatus() == SongStatus.PENDING));
-        verify(analysisQueue).publish(any(), eq(s3Key));
+        order.verify(analysisQueue).publish(42L, s3Key);
     }
 }
