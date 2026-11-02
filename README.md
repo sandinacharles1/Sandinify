@@ -245,3 +245,4 @@ I am actively working on expanding Sandinify with more advanced system features 
 * **AI Music Finder** – Discover hidden audio patterns through advanced frequency analytics.
 * **AI Book Finder** – Map song frequency profiles directly to thematic literature recommendations.
 * **Friends** – Connect with other music-loving developers to share and review audio analysis results.
+* **Stream Missing Songs Using Spotify Web API (no editing allowed)** – Utilizing Spotify Web Playback SDK
