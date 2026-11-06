@@ -15,4 +15,6 @@ jobs:
           java-version: '25'
           cache: maven
 
-      - run: java -version
+      - name: Run tests #Automaatically run the tests in the bproper server
+        working-directory: user_management/backend/server/sandinify
+        run: ./mvnw test
