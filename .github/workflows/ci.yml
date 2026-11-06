@@ -1,0 +1,5 @@
+name: Sandinify Tests CI
+
+on: #Run whenever theres's a push or pull request.
+  push:
+  pull_request:
