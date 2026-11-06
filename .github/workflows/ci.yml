@@ -3,3 +3,9 @@ name: Sandinify Tests CI
 on: #Run whenever theres's a push or pull request.
   push:
   pull_request:
+
+jobs:
+  test: #Run the tests on these configs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4 #checkout the entire repository (and monitor version)
