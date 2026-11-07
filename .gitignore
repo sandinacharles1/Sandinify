@@ -11,3 +11,9 @@ hs_err_pid*.log
 *.iml
 **/node_modules/
 **/dist/
+audio_analysis/training.data
+.env
+.venv
+audio_analysis/models/
+audio_analysis/__pycache__/
+audio_analysis/**/*.py[cod]

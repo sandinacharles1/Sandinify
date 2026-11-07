@@ -7,6 +7,11 @@ on: #Run whenever theres's a push or pull request.
 jobs:
   test: #Run the tests on these configs
     runs-on: ubuntu-latest
+    env:
+      AWS_BUCKET_NAME: test-bucket
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test-access-key
+      AWS_SECRET_ACCESS_KEY: test-secret-key
     steps:
       - uses: actions/checkout@v4 #checkout the entire repository (and monitor version)
       - uses: actions/setup-java@v4
