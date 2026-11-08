@@ -1,4 +1,4 @@
-# Sandinify
+# Sandinify [![Sandinify Tests CI](https://github.com/sandinacharles1/Sandinify/actions/workflows/ci.yml/badge.svg)](https://github.com/sandinacharles1/Sandinify/actions/workflows/ci.yml)
 
 **Sandinify** is a personal project I'm building to learn how backend systems and system design work. It is a music application heavily inspired by Spotify, but with a unique twist that lets you analyze the actual frequencies of a song and find matching books!
 ## Table of Contents
