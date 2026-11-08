@@ -17,6 +17,7 @@
     * [Failure behavior](#failure-behavior)
     * [Authentication](#authentication)
   * [Unit Testing](#testing)
+  * [Continuous Integration](#continuous-integration)
   * [Load Testing and Distributed Tracing](#load-testing-and-distributed-tracing)
     * [Initial results](#initial-results)
   * [Getting Started](#getting-started)
@@ -159,6 +160,33 @@ If Redis is unavailable, the filter **fails open** and lets the request through,
 12. After logout, the refresh token is rejected
 
 The suite uses `@Transactional` so each test's database changes are rolled back, a test-only JWT secret, and a mocked rate limiter so the tests do not depend on Redis.
+## Continuous Integration
+
+Every push runs the test suite automatically on a clean GitHub-hosted machine, so a passing result doesn't depend on anything installed on my laptop. The workflow lives in `.github/workflows/ci.yml`.
+
+### How the workflow works
+
+GitHub starts a fresh, empty Ubuntu virtual machine for each run and discards it afterward. The workflow builds up everything the tests need, in order:
+
+| Step | What it does | Why it's needed |
+|---|---|---|
+| `actions/checkout` | Clones the repo onto the VM | The VM starts with no code |
+| `actions/setup-java` (Temurin 25, `cache: maven`) | Installs Java 25 and caches Maven downloads | The VM has no Java, and the version must match `pom.xml`. Caching avoids re-downloading dependencies on every run |
+| `./mvnw test` with `working-directory` | Runs every test in `src/test/java` | The Maven project is in `user_management/backend/server/sandinify`, not the repo root |
+
+The workflow triggers on `push` and `pull_request`, so a failing change shows a red check before it is merged. It runs the integration and unit tests only. The k6 load tests are not part of CI, because they need a running app and real traffic.
+
+### Making the tests run on a blank machine
+
+Passing locally and passing in CI were not the same thing. Three problems showed up, and each had a different fix:
+
+1. **`mvnw` was not executable.** The run failed with `Permission denied` (exit code 126). Files committed from Windows lose the Linux executable bit. Fixed with `git update-index --chmod=+x` on the script, which fixes it for anyone who clones the repo, not just CI.
+2. **Missing config values.** `application.properties` references `${AWS_BUCKET_NAME}` and three other AWS variables that only exist on my machine. Because `@SpringBootTest` boots the whole app, an unresolved placeholder crashes startup and fails every test. The workflow sets fake values under `env:`. No test calls S3, so the values are never used, and they are safe to keep in a public file. Real credentials are never committed.
+3. **No database on the VM.** The main config points at Postgres on `localhost:5432`, which doesn't exist in CI. Tests use a `test` profile (`src/test/resources/application-test.properties`) that switches to H2, a small in-memory database that needs no installation. The profile only overrides the datasource, so all other settings still apply. `SandinifyApplicationTests` activates it with `@ActiveProfiles("test")`.
+
+### Tradeoff
+
+H2 is not PostgreSQL, so a Postgres-specific SQL feature could behave differently in tests than in production. Nothing in the project depends on one today. If that changes, the alternative is a `services: postgres:` container in the workflow, which runs a real PostgreSQL next to the test job.
 
 ## Load Testing and Distributed Tracing
 
