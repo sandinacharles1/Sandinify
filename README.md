@@ -135,12 +135,34 @@ Java locks like `synchronized` only protect a single JVM. With multiple server i
 
 If Redis is unavailable, the filter **fails open** and lets the request through, since blocking all users because of a limiter outage is worse than briefly allowing extra traffic.
 
-### Authentication
+## Authentication
 
-- **Access tokens** are short-lived JWTs, signed with HMAC-SHA256 so tampering is detected.
-- **Refresh tokens** are long-lived, stored hashed in the database, and revocable. Logging out invalidates the token so it can no longer be used to refresh.
-- Login returns the same error for a wrong password and an unknown user, so attackers cannot discover which usernames exist.
-- Passwords are hashed, never stored in plain text.
+This application utilizes a secure, split-state authentication design to balance performance, strict data secrecy, and user experience. 
+
+*   **Passwords are Hashed:** Credentials are never stored in plain text.
+*   **Enumeration Prevention:** The login endpoint returns the exact same generic error for an incorrect password as it does for an unknown user, preventing attackers from harvesting valid usernames.
+
+---
+
+### 1. Stateless Access Tokens (JWT)
+Access tokens are short-lived, self-contained JSON Web Tokens (JWTs) that expire exactly **15 minutes** after issuance. Because they are self-contained, the backend does not perform database lookups to authorize incoming requests.
+
+*   **Token Structure & Claims:** The token consists of three period-separated segments: `header.payload.signature`. The payload contains explicit lifecycle claims:
+    *   `sub`: The authenticated username.
+    *   `iat`: The exact Unix timestamp of token creation.
+    *   `exp`: The exact Unix timestamp marking token death.
+*   **Symmetric Verification (Tamper Proofing):** Every inbound request passing through `JwtAuthFilter` triggers an on-demand cryptographic signature verification using a private key:
+    *Signature = HMAC-SHA256(Base64URL(Header) + "." + Base64URL(Payload), SecretKey)*
+*   **Integrity Enforcement:** If a malicious client modifies the payload (such as altering the `exp` timestamp to skip expiration), the freshly calculated hash will mismatch the signature. The filter catches this instantly via `jwt.verify()` and drops the request with a `401 Unauthorized` response before it ever hits your application logic.
+
+---
+
+### 2. State-Backed Refresh Tokens
+To maximize security without requiring users to constantly retype their credentials, long-lived access tokens are avoided. Instead, when the 15-minute access window dies, the client relies on a long-lived `RefreshToken`.
+
+*   **Storage & Secrecy:** Unlike stateless access tokens, refresh tokens are stored securely as non-reversible hashes directly inside the database.
+*   **Sliding Sessions:** When the frontend receives a `401 Unauthorized` response due to an expired access token, it intercepts the error and quietly submits the refresh token to `/api/refresh` to fetch a new access token.
+*   **Revocation Support:** Because the backend explicitly matches incoming refresh tokens against database records, access can be revoked immediately. When a user calls `/api/logout`, their refresh token is invalidated or purged from the database, preventing any future access token renewals.
 
 ## Testing
 
