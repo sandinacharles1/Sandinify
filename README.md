@@ -25,7 +25,8 @@
     * [Run](#run)
     * [Run the tests](#run-the-tests)
     * [Run the load test](#run-the-load-test)
-  * [What I Learned](#what-i-learned)
+*  [What I Learned](#what-i-learned)
+* [Running Multiple Instances Behind a Load Balancer](#running-multiple-instances-behind-a-load-balancer)
 * [Sandinify User Song Upload Section](#sandinify-user-song-upload-section)
   * [Upload System Design](#upload-design)
   * [Feature Extraction System Design](#feature-extraction-design)
@@ -279,6 +280,75 @@ k6 run loadtest.js
 
 While writing the integration tests, every test was failing and the cause was not obvious. Instead of trying random fixes, I narrowed the problem down: since all tests failed, I suspected shared configuration rather than individual logic. I confirmed the app worked outside the test environment by creating an account manually, which isolated the issue to the test setup. Reading the logs more carefully showed that the test environment was not loading configuration properties correctly and that the JWT secret property was referenced with the wrong case. The main lesson was to gather evidence and change my approach when something isn't working, instead of repeating the same fix.
 
+# Running Multiple Instances Behind a Load Balancer
+
+To test how Sandinify handles multiple backend instances—specifically how shared Redis rate-limiting, JWT authentication, and distributed tracing behave under load—I moved the backend from a single Docker Compose container to a local Kubernetes cluster using **kind** and an **F5 NGINX Ingress Controller**.
+
+## Request Flow Architecture
+
+```text
+k6 / Browser (localhost:8081)
+       │
+       ▼
+kind Node Port Mapping (Host 8081 ──▶ Node 80)
+       │
+       ▼
+F5 NGINX Ingress Controller (Routes /api for host: localhost)
+       │
+       ▼
+sandinify Service (Stable internal IP & load balancer)
+       │
+       ├──▶ App Pod 1 ──┐
+       │                ├──▶ Redis (Shared rate-limit buckets)
+       └──▶ App Pod 2 ──┼──▶ PostgreSQL (PersistentVolumeClaim)
+                        └──▶ Jaeger v2.23.0 (OTLP HTTP traces)
+```
+
+---
+
+## Chronological Setup, Changes & Engineering Decisions
+
+### Step 1: Make the Application Container-Portable
+> **What this means:** Packaging the app so it builds itself inside Docker and gets its database/frontend addresses from outside settings rather than hardcoded `localhost` links.
+
+* **Multi-stage `Dockerfile`:** Replaced the single-stage Dockerfile (which relied on a pre-built `target/*.jar` from my laptop) with a two-stage build. Stage 1 compiles and packages the JAR inside a container with Maven and Java 25; Stage 2 copies *only* the finished JAR into a lightweight Java runtime image (leaving build tools and source code behind). Added `.dockerignore` to keep `.git`, `target/`, and `secret.properties` out of the build context.
+* **Environment-driven hosts and CORS:** Inside a container, `localhost` means *that container itself*, not my laptop or another container. I updated `application.properties` so `SPRING_DATASOURCE_URL` and `SPRING_DATA_REDIS_HOST` are injected via environment variables (keeping localhost fallbacks for local development). I also centralized the hardcoded `http://localhost:5173` **CORS** (Cross-Origin Resource Sharing, the browser rule controlling which frontend URL can call the backend) origin into a single `app.cors.allowed-origin` property across `AuthController`, `SongUploadController`, `JwtAuthFilter`, and `RateLimitFilter` so early error responses respect the configured frontend address.
+
+### Step 2: Provision the Local Cluster (`kind-config.yaml`)
+> **What this means:** Building the empty Kubernetes environment inside Docker on my laptop and wiring up a port (`8081`) so outside traffic can reach inside it.
+
+* **Cluster & port mapping:** Installed **kind** (Kubernetes IN Docker, a tool that runs a local Kubernetes cluster inside Docker containers) and created `kind-config.yaml`. This file defines a single `control-plane` **node** (the virtual machine/container that manages the cluster) with the label `ingress-ready=true` (a marker telling the ingress controller it can run on this node). I configured `extraPortMappings` to connect laptop port `8081` to container port `80`, creating an entry doorway without colliding with port `8080`.
+* **Image loading:** Built `sandinify:kind` and copied it directly into the cluster (`kind load docker-image sandinify:kind --name sandinify`), because kind nodes have their own isolated image storage and cannot see images sitting in my laptop's regular Docker list.
+
+### Step 3: Deploy Workloads & Isolate Secrets (`kind-workloads.yaml` & `apply-kind.ps1`)
+> **What this means:** Starting my actual programs (two copies of the backend, Postgres, and Redis) inside the empty cluster and splitting passwords into separate, need-to-know buckets instead of one giant shared list.
+
+* **Kubernetes manifests (`k8s/kind-workloads.yaml`):** Created a dedicated `sandinify` **namespace** (an isolated folder inside the cluster to group this project's resources) containing:
+  * **PostgreSQL:** A **Deployment** (instructions telling Kubernetes to keep a specific container running), a **Service** (a permanent internal hostname so other apps can find Postgres even if its Pod restarts and changes IP addresses), and a `1Gi` **PersistentVolumeClaim (PVC)** (a reserved virtual hard drive so database records survive container restarts).
+  * **Redis:** A Deployment and Service reachable internally at `redis:6379`.
+  * **Sandinify Backend:** A Deployment with `replicas: 2` (two identical **Pods**, the smallest deployable units wrapping my app containers), **probes** (automated health checks verifying the app is alive and ready for traffic), **init containers** (helper containers that run first and wait for Postgres and Redis to answer before starting the app), and an internal `ClusterIP` Service (`sandinify`) that spreads internal requests across both Pods.
+* **Scoped Secret injection (`k8s/apply-kind.ps1`):** Removed placeholder credentials from tracked YAML files. Wrote a PowerShell script that extracts only the six required keys from my gitignored `.env` into two isolated Kubernetes **Secrets** (objects that store sensitive configuration and pass it into Pods as environment variables)—`sandinify-db-secrets` for Postgres and `sandinify-app-secrets` for JWT and AWS keys—so each workload only receives the keys it explicitly references.
+
+### Step 4: Configure Ingress Load Balancing, Observability & Load Tests
+> **What this means:** Setting up the cluster's front-door traffic router (Ingress) to balance requests across both app Pods, connecting Jaeger to record timing traces, and aiming k6 load tests at the cluster.
+
+* **NGINX Ingress (`k8s/install-kind-ingress.ps1`):** Installed the F5 NGINX **Ingress Controller** (the cluster's front-door receptionist that accepts external HTTP requests and routes them to internal Services), bound it to `hostPort: 80` on the `ingress-ready=true` node, and added an **Ingress** rule (the routing table) sending `/api` traffic for `host: localhost` to the `sandinify` Service.
+* **Distributed tracing with Jaeger:** Deployed Jaeger inside the cluster and configured the OpenTelemetry Java agent on both app Pods (`OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318`, `OTEL_SERVICE_NAME=sandinify-auth`) so timing traces from both replicas combine into a single timeline UI.
+* **Parameterized load tests (`loadtest.js`):** Updated k6 to read `BASE_URL` and `DURATION` from `__ENV` (k6's built-in object for reading command-line `--env` flags) so the same script can target `http://localhost:8081` through the ingress layer.
+
+---
+
+## Issues Encountered & How I Solved Them
+
+| Issue | Root Cause | Solution |
+| :--- | :--- | :--- |
+| **Multi-replica database schema race** | When both app Pods booted simultaneously with Hibernate `ddl-auto=update` (Hibernate auto-modifying tables on startup), both saw an empty database and issued concurrent `CREATE TABLE` statements, causing duplicate table errors in Postgres. | Switched to **Flyway** (a versioned database migration tool) with `V1__create_initial_schema.sql` using `IF NOT EXISTS` and baseline version `0`. Flyway uses Postgres **advisory locks** (a database-level mutex) so one Pod creates the schema while the second waits and skips it. Set Hibernate to `validate` (check-only mode) in `application.properties` and `docker-compose.yml`, keeping H2 tests isolated. |
+| **Flyway silently skipped migrations on startup** | Adding only the core `org.flywaydb` libraries does not trigger **auto-configuration** (Spring Boot's automatic wiring of beans based on classpath dependencies) in Spring Boot 4, leaving `flyway_schema_history` missing in Postgres. | Replaced the raw dependency with `spring-boot-starter-flyway` alongside `flyway-database-postgresql`, rebuilt the image, and verified versions `0` and `1` in `flyway_schema_history`. |
+| **Kubernetes didn't pick up rebuilt images** | Reloading an updated image with the same `:kind` tag did not trigger a **rollout** (Kubernetes replacing old Pods with new ones) because the Deployment YAML text had not changed. | Explicitly ran `kubectl rollout restart deployment/sandinify -n sandinify` after `kind load docker-image` to force Kubernetes to recreate Pods using the new image **digest** (unique cryptographic hash). |
+| **Postgres password desync on existing volumes** | The official Postgres image only reads `POSTGRES_PASSWORD` when initializing an empty data directory; updating the Kubernetes Secret alone left the existing PVC database with the old password. | Updated `apply-kind.ps1` to run `ALTER ROLE postgres WITH PASSWORD ...` over Postgres's local **Unix socket** (a direct, passwordless internal connection inside the container), updating the password without wiping the PVC data. |
+| **Docker Desktop WSL disk I/O failure** | During an image load, Docker Desktop hit **WSL** (Windows Subsystem for Linux, the Linux VM powering Docker on Windows) block-device storage I/O errors and the kind node exited (`code 137`). | Avoided deleting the cluster or resetting Docker data; restarted Docker Desktop, brought the existing `sandinify-control-plane` container back up with `docker start`, confirmed the Postgres PVC stayed `Bound` (still attached to its storage), and reloaded the image. |
+| **NGINX Ingress Controller failed readiness & rejected routes** | F5 NGINX Ingress (`v5.7.1`) stayed unready because its **CRDs** (Custom Resource Definitions, extensions that teach Kubernetes new object types) were missing, and it rejected wildcard host rules. | Added the pinned `crds.yaml` manifest to `install-kind-ingress.ps1` and explicitly set `host: localhost` on the Ingress rule. |
+| **Jaeger v1 end-of-life deprecation** | Deploying `jaegertracing/all-in-one:1.76.0` logged an end-of-life warning. | Upgraded the Deployment manifest to Jaeger **v2.23.0** (`cr.jaegertracing.io/jaegertracing/jaeger:2.23.0`) and verified trace ingestion via the `/api/v3/services` endpoint. |
 
 # Sandinify User Song Upload Section
 ## Upload Design
