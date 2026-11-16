@@ -17,11 +17,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final RateLimiterService limiter;
     private final int capacity;
     private final double refill;
+    private final String corsAllowedOrigin;
 
-    public RateLimitFilter(RateLimiterService limiter, @Value("${ratelimit.capacity:100}") int capacity, @Value("${ratelimit.refill:0.5}") double refill) {
+    public RateLimitFilter(RateLimiterService limiter,
+                           @Value("${ratelimit.capacity:100}") int capacity,
+                           @Value("${ratelimit.refill:0.5}") double refill,
+                           @Value("${app.cors.allowed-origin}") String corsAllowedOrigin) {
         this.limiter = limiter;
         this.capacity = capacity;
         this.refill = refill;
+        this.corsAllowedOrigin = corsAllowedOrigin;
     }
 
     @Override
@@ -41,7 +46,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             if (!allowed) {
                 response.setStatus(429);
                 response.setContentType("application/json");
-                response.setHeader("Access-Control-Allow-Origin", "http://localhost:5173");
+                response.setHeader("Access-Control-Allow-Origin", corsAllowedOrigin);
                 response.getWriter().write("{\"message\":\"Too many requests. Slow down.\"}");
                 return;
             }

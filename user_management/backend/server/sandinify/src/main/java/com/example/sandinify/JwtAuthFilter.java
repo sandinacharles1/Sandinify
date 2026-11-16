@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -20,9 +21,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             Set.of("/api/signup", "/api/login", "/api/refresh", "/api/logout");
 
     private final JwtService jwtService;
+    private final String corsAllowedOrigin;
 
-    public JwtAuthFilter(JwtService jwtService) {
+    public JwtAuthFilter(JwtService jwtService,
+                         @Value("${app.cors.allowed-origin}") String corsAllowedOrigin) {
         this.jwtService = jwtService;
+        this.corsAllowedOrigin = corsAllowedOrigin;
     }
 
     @Override
@@ -48,7 +52,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (username == null) {
             response.setStatus(401);
             response.setContentType("application/json");
-            response.setHeader("Access-Control-Allow-Origin", "http://localhost:5173");
+            response.setHeader("Access-Control-Allow-Origin", corsAllowedOrigin);
             response.getWriter().write("{\"message\":\"Invalid or expired token\"}");
             return;
         }
