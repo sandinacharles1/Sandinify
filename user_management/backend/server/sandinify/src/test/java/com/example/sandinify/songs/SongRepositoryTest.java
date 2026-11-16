@@ -7,7 +7,10 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
-@DataJpaTest
+@DataJpaTest(properties = {
+        "spring.flyway.enabled=false",
+        "spring.jpa.hibernate.ddl-auto=create-drop"
+})
 class SongRepositoryTest {
 
     @Autowired
