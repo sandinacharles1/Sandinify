@@ -2,7 +2,7 @@ import http from 'k6/http'; //import http. It allows us to make requests
 import { check } from 'k6'; //import check. It allows us to check the response of the requests
 import { Counter } from 'k6/metrics'; //import Counter. It allows us to count the number of requests that are rejected by the server
 
-const BASE = 'http://localhost:8080'; //Where requests come from
+const BASE = (__ENV.BASE_URL || 'http://localhost:8080').replace(/\/$/, '');
 const JSON_HEADERS = { 'Content-Type': 'application/json' }; //headers for request. a header isthe infomation the is sent to the endpoint
 const rejected = new Counter('rejected_429'); //create a counter for the number of requests that are rejected by the server
 
@@ -15,7 +15,7 @@ export const options = {
       executor: 'constant-arrival-rate',
       rate: RATES[TEST],
       timeUnit: '1s',
-      duration: '30s',
+      duration: __ENV.DURATION || '30s',
       preAllocatedVUs: 50,
       maxVUs: 300,
       exec: TEST,
