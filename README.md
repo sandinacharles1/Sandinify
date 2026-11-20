@@ -258,7 +258,7 @@ Key methods are annotated with OpenTelemetry's `@WithSpan`, which automatically 
 ### Run
 
 ```bash
-git clone https://github.com/<your-username>/sandinify.git
+git clone https://github.com/<sandinacharles1>/sandinify.git
 cd sandinify
 docker compose up --build
 ```
