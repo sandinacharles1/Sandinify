@@ -27,10 +27,11 @@
     * [Run the load test](#run-the-load-test)
 *  [What I Learned](#what-i-learned)
 * [Running Multiple Instances Behind a Load Balancer](#running-multiple-instances-behind-a-load-balancer)
-* [Sandinify User Song Upload Section](#sandinify-user-song-upload-section)
+* [Song Upload System Design](#song-upload-system-design)
   * [Upload System Design](#upload-design)
   * [Feature Extraction System Design](#feature-extraction-design)
 * [Upcoming Features](#upcoming-features)
+* [Song Retrieval System Design](#song-retrieval-system-design)
 ---
 ## Homepage Preview
 ![Sandinify Homepage](image.png)
@@ -350,12 +351,18 @@ sandinify Service (Stable internal IP & load balancer)
 | **NGINX Ingress Controller failed readiness & rejected routes** | F5 NGINX Ingress (`v5.7.1`) stayed unready because its **CRDs** (Custom Resource Definitions, extensions that teach Kubernetes new object types) were missing, and it rejected wildcard host rules. | Added the pinned `crds.yaml` manifest to `install-kind-ingress.ps1` and explicitly set `host: localhost` on the Ingress rule. |
 | **Jaeger v1 end-of-life deprecation** | Deploying `jaegertracing/all-in-one:1.76.0` logged an end-of-life warning. | Upgraded the Deployment manifest to Jaeger **v2.23.0** (`cr.jaegertracing.io/jaegertracing/jaeger:2.23.0`) and verified trace ingestion via the `/api/v3/services` endpoint. |
 
-# Sandinify User Song Upload Section
-## Upload Design
+# Song Upload System Design
+## Current Upload Design (Considers Song Analysis)
 <img width="1156" height="1351" alt="Song Upload Architecture (1)" src="https://github.com/user-attachments/assets/6df5a25b-ef5c-4436-81f6-12ef5e0653e2" />
 
 ## Feature Extraction Design
 <img width="596" height="2619" alt="Song Upload Architecture" src="https://github.com/user-attachments/assets/184e37dc-a0f7-4845-8602-8fae1f76f118" />
+
+## Extra Upload Design Features (Factors in Transcoding)
+<img width="2399" height="651" alt="Song Upload Architecture (2)" src="https://github.com/user-attachments/assets/7f04f053-d6b5-44c0-9190-65e6bb6b8f13" />
+
+# Song Retrieval System Design
+<img width="900" height="1734" alt="Song Upload Architecture (3)" src="https://github.com/user-attachments/assets/ebf43e25-0187-4727-95b7-968f79fc78f2" />
 
 # Upcoming Features
 I am actively working on expanding Sandinify with more advanced system features and interactive modules:
