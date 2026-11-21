@@ -6,6 +6,7 @@ import com.example.sandinify.RefreshToken;
 import com.example.sandinify.RefreshTokenService;
 import com.example.sandinify.User;
 import com.example.sandinify.UserRepository;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -41,6 +42,7 @@ public class AuthController {
     public record TokenResponse(String message, String accessToken) {}
 
     @PostMapping("/signup")
+    @WithSpan("auth.signup")
     public ResponseEntity<LoginResponse> signup(@RequestBody AuthRequest request) throws Exception {
         String username = request.username();
         String password = request.password();
@@ -63,6 +65,7 @@ public class AuthController {
     }
 
     @PostMapping("/login")
+    @WithSpan("auth.login")
     public ResponseEntity<LoginResponse> login(@RequestBody AuthRequest request) throws Exception {
         if (request.username() == null || request.password() == null) {
             return ResponseEntity.badRequest().body(new LoginResponse("Username and password required", null, null));
@@ -80,6 +83,7 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
+    @WithSpan("auth.refresh")
     public ResponseEntity<TokenResponse> refresh(@RequestBody RefreshRequest request) throws Exception {
         Optional<RefreshToken> token = refreshTokenService.validate(request.refreshToken());
         if (token.isEmpty()) {
@@ -96,6 +100,7 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
+    @WithSpan("auth.logout")
     public ResponseEntity<MessageResponse> logout(@RequestBody RefreshRequest request) {
         refreshTokenService.revoke(request.refreshToken());
         return ResponseEntity.ok(new MessageResponse("Logged out"));
@@ -103,6 +108,7 @@ public class AuthController {
 
     // A protected endpoint to test with. The filter puts "username" on the request.
     @GetMapping("/me")
+    @WithSpan("auth.me")
     public MessageResponse me(@RequestAttribute("username") String username) {
         return new MessageResponse("Hello " + username);
     }

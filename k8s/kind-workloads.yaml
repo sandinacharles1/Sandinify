@@ -212,6 +212,12 @@ spec:
               value: "0.5"
             - name: OTEL_SERVICE_NAME
               value: sandinify-auth
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: k8s.pod.name=$(POD_NAME),service.instance.id=$(POD_NAME)
             - name: OTEL_TRACES_EXPORTER
               value: otlp
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -226,6 +232,8 @@ spec:
               value: none
             - name: OTEL_LOGS_EXPORTER
               value: none
+            - name: OTEL_INSTRUMENTATION_ANNOTATIONS_ENABLED
+              value: "true"
           startupProbe:
             tcpSocket:
               port: http
