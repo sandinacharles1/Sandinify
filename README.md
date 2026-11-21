@@ -27,10 +27,13 @@
     * [Run the load test](#run-the-load-test)
 *  [What I Learned](#what-i-learned)
 * [Running Multiple Instances Behind a Load Balancer](#running-multiple-instances-behind-a-load-balancer)
-* [Sandinify User Song Upload Section](#sandinify-user-song-upload-section)
-  * [Upload System Design](#upload-design)
+* [Song Upload System Design](#song-upload-system-design)
+  * [Upload System Design (Emphasis on ML)](#current-upload-design)
+  * [Upload System Design (Emphasis on transcoding)](#extra-upload-design)
   * [Feature Extraction System Design](#feature-extraction-design)
+*  [Song Retrieval System Design](#song-retrieval-system-design)
 * [Upcoming Features](#upcoming-features)
+
 ---
 ## Homepage Preview
 ![Sandinify Homepage](image.png)
@@ -257,7 +260,7 @@ Key methods are annotated with OpenTelemetry's `@WithSpan`, which automatically 
 ### Run
 
 ```bash
-git clone https://github.com/<your-username>/sandinify.git
+git clone https://github.com/<sandinacharles1>/sandinify.git
 cd sandinify
 docker compose up --build
 ```
@@ -335,8 +338,87 @@ sandinify Service (Stable internal IP & load balancer)
 * **NGINX Ingress (`k8s/install-kind-ingress.ps1`):** Installed the F5 NGINX **Ingress Controller** (the cluster's front-door receptionist that accepts external HTTP requests and routes them to internal Services), bound it to `hostPort: 80` on the `ingress-ready=true` node, and added an **Ingress** rule (the routing table) sending `/api` traffic for `host: localhost` to the `sandinify` Service.
 * **Distributed tracing with Jaeger:** Deployed Jaeger inside the cluster and configured the OpenTelemetry Java agent on both app Pods (`OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318`, `OTEL_SERVICE_NAME=sandinify-auth`) so timing traces from both replicas combine into a single timeline UI.
 * **Parameterized load tests (`loadtest.js`):** Updated k6 to read `BASE_URL` and `DURATION` from `__ENV` (k6's built-in object for reading command-line `--env` flags) so the same script can target `http://localhost:8081` through the ingress layer.
+#### Database Connection Pooling & Concurrency (HikariCP)
+
+This service uses **HikariCP** (Spring Boot's default JDBC connection pool) to manage persistent PostgreSQL connections efficiently under load (default of 10 connections):
+
+* **Why a Connection Pool Is Needed:** HikariCP pre-opens a fixed number of authenticated TCP connections at startup and reuses them across requests, avoiding the latency of repeating TCP handshakes and database authentication on every API call.
+* **Why Separate Connections Per Request Are Bad:** PostgreSQL uses a **process-per-connection** model, spawning a dedicated OS process (`fork()`) and allocating private memory for every connection. Opening unbounded connections per request causes rapid RAM exhaustion and high handshake latency during traffic spikes.
+* **What Happens Behind the Hood (Context Switching):** Each CPU core runs only one process at a time. When multiple replicas open too many concurrent database connections (e.g., 3 pods × 10 connections = 30 active Postgres processes competing for a few CPU cores), the OS scheduler must constantly **context switch**—pausing one process, saving its CPU registers and state to RAM, and loading another. Spending CPU cycles swapping processes instead of executing SQL queries directly increases **p95 tail latency**.
+
+## Load-Testing on Multiple Instances
+
+Load testing was conducted using **k6** across core authentication endpoints (`POST /signup`, `POST /login`, `GET /me`, and `POST /refresh`) to evaluate throughput, tail latency, and distributed rate limiting across Kubernetes pod replicas.
+
+### 1. Initial Multi-Pod Bottlenecks vs. Tuned Results
+
+When scaling from 1 to 3 replicas on a resource-constrained local cluster, initial test runs exposed cold-start timeouts and tail-latency spikes caused by JVM warm-up and concurrent database connection pool contention. After allowing pod warm-up and stabilizing cluster load, 3-pod performance stabilized with zero request failures.
+
+| Metric | Initial 3-Pod Run (Cold / Contended) | Tuned 3-Pod Run (Steady State) | Improvement |
+| :--- | :--- | :--- | :--- |
+| **Target / Achieved RPS** | 40 RPS target → `26.6 RPS` achieved | 80 RPS target → `79.6 RPS` achieved | **3.0x** sustained throughput |
+| **Dropped Iterations** | `82` dropped (VU starvation) | `0` dropped | **100%** reduction in drops |
+| **Median Latency (`p50`)** | `36.18 ms` | `28.76 ms` | **-20.5%** faster median |
+| **Tail Latency (`p95`)** | `17,498.26 ms` (~17.5s stall) | `52.27 ms` | **-99.7%** reduction in p95 |
+| **Max Latency** | `19,614.93 ms` | `182.38 ms` | **-99.1%** reduction in worst-case |
+| **HTTP Check Pass Rate** | `100%` (of completed requests) | `100%` (`2,402 / 2,402` checks) | Zero functional errors |
 
 ---
+
+### 2. Direct Comparison: 1 Pod vs. 3 Pods (At 80 RPS)
+
+Comparing both topologies side-by-side under identical steady load (`80 RPS` target, ~2,400 requests) highlights the trade-offs of running multiple JVM instances on a single physical host:
+
+| Metric | 1 Pod (`one-pod-80rps`) | 3 Pods (`three-pod-80rps`) | Difference (3 Pods vs. 1 Pod) |
+| :--- | :--- | :--- | :--- |
+| **Achieved Throughput** | `79.92 RPS` (2,404 reqs) | `79.56 RPS` (2,403 reqs) | `-0.45%` (Equivalent) |
+| **Error Rate** | `0.0%` | `0.0%` | No difference (100% reliable) |
+| **Median Latency (`p50`)** | `28.45 ms` | `28.76 ms` | `+0.31 ms` (+1.1%) |
+| **Tail Latency (`p95`)** | `40.01 ms` | `52.27 ms` | `+12.26 ms` (+30.6%) |
+| **Max Latency** | `58.42 ms` | `182.38 ms` | `+123.96 ms` (Context switching) |
+
+> **Does 3 Pods Outperform 1 Pod Here?**
+> **No—on a single local machine, 1 pod delivers tighter tail latency (`40.01 ms` vs. `52.27 ms` `p95`) and handles higher peak load (`159.5 RPS`) than 3 pods.** Because all three Spring Boot pods share the same underlying local CPU, RAM, and single PostgreSQL instance, adding replicas introduces Kubernetes service-routing hops, OS thread context switching, and 3x JVM memory overhead without adding physical compute capacity.
+>
+> **Why 3 Pods Still Matters:** Running 3 replicas validates **high availability (zero single point of failure)** and proves that **shared state (JWT validation and Redis + Lua rate limiting)** stays consistent across horizontally scaled nodes—ready to scale out across separate worker nodes in a multi-node production cluster.
+
+---
+
+### 3. Complete Test Suite Summary
+
+| Deployment Topology | Test Profile | Achieved RPS | Total Requests | Error Rate | Median (`p50`) | Tail (`p95`) |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **1 Pod** | Steady Load (60 RPS) | `59.9 RPS` | 1,803 | `0.0%` | `28.55 ms` | `46.65 ms` |
+| **1 Pod** | Steady Load (80 RPS) | `79.9 RPS` | 2,404 | `0.0%` | `28.45 ms` | `40.01 ms` |
+| **1 Pod** | Peak Load (160 RPS) | `159.5 RPS` | 4,805 | `0.0%` | `31.53 ms` | `74.16 ms` |
+| **3 Pods** | Steady Load (60 RPS) | `56.3 RPS` | 1,804 | `0.0%` | `28.91 ms` | `50.01 ms` |
+| **3 Pods** | Steady Load (80 RPS) | `79.6 RPS` | 2,403 | `0.0%` | `28.76 ms` | `52.27 ms` |
+| **1 Pod vs. 3 Pods** | Rate Limiter Burst | `45.1` / `57.5 RPS` | 302 each | `99.7%` (`429`s) | `4.45 ms` / `4.74 ms` | `8.64 ms` / `572.86 ms` |
+
+### 4. Distributed Tracing & Bottleneck Isolation (OpenTelemetry)
+
+To verify that Kubernetes balanced traffic across every replica and to quantify exact execution bottlenecks, the backend was instrumented with **OpenTelemetry** (exporting traces to **Jaeger**).
+
+* **Confirming Multi-Pod Load Balancing (`k8s.pod.name`):**
+  Every request trace includes **Resource Attributes**—metadata attached to the telemetry stream that identifies the specific container (`k8s.pod.name`) handling the call. Grouping traces in Jaeger by `k8s.pod.name` confirmed that incoming traffic through Ingress was actively distributed across all 3 pod replicas rather than pinned to a single pod.
+
+* **Span-Level Latency Breakdown (`/api/login` vs. `/api/signup`):**
+  Averaging sequential traces through Ingress (`302.7 ms` average for `/api/login`) broke execution down into parent-child **Spans** (individual timed units of work):
+
+| Execution Layer / Step | `/api/login` Span | Avg Time (`%` Req) | `/api/signup` Span | Avg Time (`%` Req) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Argon2 Cryptography** | `argon2.verify` | `236.0 ms` (**81.9%**) | `argon2.hash` | `140.7 ms` (**73.1%**) |
+| **User Lookup / Existence Check** | `findByUsername` (`SELECT`) | `27.9 ms` (**5.9%**) | Username-exists (`SELECT`) | `44.7 ms` (**7.6%**) |
+| **User Persistence** | — | — | Save new user (`INSERT`) | `13.8 ms` (**4.5%**) |
+| **Refresh Token Persistence** | Create & save token | `14.4 ms` (**4.8%**) | Create & save token | `8.1 ms` (**4.2%**) |
+| **Rate Limiter (Redis)** | `tryTake` + Redis Lua | `3.0 ms` (**1.8%**) | Rate limiter + Redis Lua | `10.9 ms` (**2.9%**) |
+| **JWT Signing** | JWT creation | `2.7 ms` (**0.7%**) | JWT creation | `1.8 ms` (**0.4%**) |
+| **Framework / Serialization** | Spring / HTTP overhead | `—` (**4.9%**) | Spring / HTTP overhead | `—` (**7.2%**) |
+
+* **Key Architectural Takeaways from Trace Spans:**
+  * **CPU-Bound Argon2 Hashing & Verification (`73.1%–81.9%` of total latency):** Both `argon2.hash` (`140.7 ms`) and `argon2.verify` (`236.0 ms`) dominated request execution time due to Argon2's memory-hard, CPU-intensive design—explaining why running 3 pods on a single local CPU introduced thread contention (multiple tasks trying to use the same CPU so some have to pause).
+  * **PostgreSQL Read & Write Spans (`10.7%–16.3%` combined):** `UserRepository.findByUsername` / username-exists `SELECT` queries (`27.9–44.7 ms`), user `INSERT`s (`13.8 ms`), and **refresh-token creation and saving** (`8.1–14.4 ms`) represented the primary database I/O cost over HikariCP.
+  * **Lightweight Edge Controls (`< 3.5%` combined):** Distributed Redis rate limiting (`3.0–10.9 ms`) and stateless JWT creation (`1.8–2.7 ms`) added minimal steady-state overhead, though burst concurrency occasionally caused `RateLimiterService` spans to spike when Redis connections queued.
 
 ## Issues Encountered & How I Solved Them
 
@@ -350,12 +432,18 @@ sandinify Service (Stable internal IP & load balancer)
 | **NGINX Ingress Controller failed readiness & rejected routes** | F5 NGINX Ingress (`v5.7.1`) stayed unready because its **CRDs** (Custom Resource Definitions, extensions that teach Kubernetes new object types) were missing, and it rejected wildcard host rules. | Added the pinned `crds.yaml` manifest to `install-kind-ingress.ps1` and explicitly set `host: localhost` on the Ingress rule. |
 | **Jaeger v1 end-of-life deprecation** | Deploying `jaegertracing/all-in-one:1.76.0` logged an end-of-life warning. | Upgraded the Deployment manifest to Jaeger **v2.23.0** (`cr.jaegertracing.io/jaegertracing/jaeger:2.23.0`) and verified trace ingestion via the `/api/v3/services` endpoint. |
 
-# Sandinify User Song Upload Section
-## Upload Design
+# Song Upload System Design
+## Current Upload Design 
 <img width="1156" height="1351" alt="Song Upload Architecture (1)" src="https://github.com/user-attachments/assets/6df5a25b-ef5c-4436-81f6-12ef5e0653e2" />
+
+## Extra Upload Design
+<img width="2399" height="651" alt="Song Upload Architecture (2)" src="https://github.com/user-attachments/assets/7f04f053-d6b5-44c0-9190-65e6bb6b8f13" />
 
 ## Feature Extraction Design
 <img width="596" height="2619" alt="Song Upload Architecture" src="https://github.com/user-attachments/assets/184e37dc-a0f7-4845-8602-8fae1f76f118" />
+
+# Song Retrieval System Design
+<img width="900" height="1734" alt="Song Upload Architecture (3)" src="https://github.com/user-attachments/assets/ebf43e25-0187-4727-95b7-968f79fc78f2" />
 
 # Upcoming Features
 I am actively working on expanding Sandinify with more advanced system features and interactive modules:
