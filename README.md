@@ -36,7 +36,7 @@
 
 ---
 ## Homepage Preview
-![Sandinify Homepage](assets/image.png)
+<img width="1610" height="841" alt="image" src="https://github.com/user-attachments/assets/99ab926d-2cf9-4b8d-b74f-0e300db04d3b" />
 
 # Sandinify User Authentication Section
 ![User Authentication Diagram](assets/User_Auth_Diagram.png)
