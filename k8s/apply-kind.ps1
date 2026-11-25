@@ -1,11 +1,17 @@
 $ErrorActionPreference = 'Stop'
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
-$envFile = Join-Path $repositoryRoot 'user_management\backend\server\sandinify\.env'
+$envFile = Join-Path $repositoryRoot 'backend\.env'
 $manifest = Join-Path $PSScriptRoot 'kind-workloads.yaml'
 $namespace = 'sandinify'
 $dbSecretName = 'sandinify-db-secrets'
 $appSecretName = 'sandinify-app-secrets'
+$workerImage = 'sandinify-transcoding-worker:kind'
+$currentContext = & kubectl config current-context
+if ($LASTEXITCODE -ne 0 -or $currentContext -notmatch '^kind-(?<cluster>.+)$') {
+    throw 'The current kubectl context must target a Kind cluster.'
+}
+$kindClusterName = $matches['cluster']
 
 if (-not (Test-Path -LiteralPath $envFile)) {
     throw "Required environment file not found: $envFile"
@@ -96,6 +102,17 @@ try {
         }
     }
 
+    $workerContext = Join-Path $repositoryRoot 'backend\transcoding_worker'
+    & docker build -t $workerImage $workerContext
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Failed to build the transcoding worker image.'
+    }
+
+    & kind load docker-image $workerImage "--name=$kindClusterName"
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Failed to load the transcoding worker image into Kind.'
+    }
+
     & kubectl apply -f $manifest
     if ($LASTEXITCODE -ne 0) {
         throw 'Failed to apply the Kubernetes workload manifest.'
@@ -125,6 +142,15 @@ try {
     & kubectl rollout status deployment/redis -n $namespace --timeout=180s
     if ($LASTEXITCODE -ne 0) {
         throw 'Redis did not become ready.'
+    }
+
+    & kubectl rollout restart deployment/transcoding-worker -n $namespace
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Failed to restart the transcoding worker with the current image.'
+    }
+    & kubectl rollout status deployment/transcoding-worker -n $namespace --timeout=240s
+    if ($LASTEXITCODE -ne 0) {
+        throw 'The transcoding worker deployment did not become ready.'
     }
 
     & kubectl rollout status deployment/jaeger -n $namespace --timeout=180s

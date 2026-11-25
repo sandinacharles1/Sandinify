@@ -318,6 +318,73 @@ spec:
       port: 8080
       targetPort: http
 ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transcoding-worker
+  namespace: sandinify
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: transcoding-worker
+  template:
+    metadata:
+      labels:
+        app: transcoding-worker
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:16
+          command:
+            - sh
+            - -c
+            - until pg_isready -h postgres -p 5432 -U postgres; do echo waiting for postgres; sleep 2; done
+        - name: wait-for-redis
+          image: redis:7
+          command:
+            - sh
+            - -c
+            - until redis-cli -h redis ping | grep -q PONG; do echo waiting for redis; sleep 2; done
+      containers:
+        - name: worker
+          image: sandinify-transcoding-worker:kind
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: REDIS_URL
+              value: redis://redis:6379/0
+            - name: DATABASE_HOST
+              value: postgres
+            - name: DATABASE_NAME
+              value: sandinify
+            - name: DATABASE_USER
+              value: postgres
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sandinify-db-secrets
+                  key: DB_PASSWORD
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: sandinify-app-secrets
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sandinify-app-secrets
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: AWS_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: sandinify-app-secrets
+                  key: AWS_REGION
+            - name: AWS_BUCKET_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: sandinify-app-secrets
+                  key: AWS_BUCKET_NAME
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
