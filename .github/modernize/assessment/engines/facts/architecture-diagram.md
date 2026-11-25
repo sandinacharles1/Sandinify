@@ -183,38 +183,38 @@ This inventory explains the authored source and the configuration that runs or t
 
 | File | How it works |
 |---|---|
-| `user_management/frontend/index.html` | Provides the browser document, root element, and module entry script for Vite. |
-| `user_management/frontend/src/main.jsx` | Defines the root React component. It renders authentication until a username is supplied, then chooses the homepage or upload screen based on local component state. |
-| `user_management/frontend/src/App.jsx` | Implements the signup and login forms. It posts credentials to the API, handles HTTP and network feedback, stores access and refresh tokens in browser local storage, and calls the parent callback on success. It also contains older refresh/authenticated-fetch helpers that are not used by the upload flow. |
-| `user_management/frontend/src/api/songApi.js` | Builds the multipart song request, attaches the stored bearer token, tries a refresh and one retry after HTTP 401, and converts unsuccessful responses into user-facing errors. Its API base URL can be set with `VITE_API_BASE_URL`. |
-| `user_management/frontend/src/home_page/Homepage.jsx` | Composes the header, sidebar, and song cards. The three displayed songs are hard-coded sample data rather than API results. |
-| `user_management/frontend/src/home_page/Header.jsx` | Renders the Sandinify banner, navigation tabs, search controls, username, and upload button. Most controls are visual placeholders. |
-| `user_management/frontend/src/home_page/Sidebar.jsx` | Renders a fixed list of sample playlists and decoration; it does not fetch playlist data. |
-| `user_management/frontend/src/home_page/Songcard.jsx` | Displays the fields of a song object as a card. Playback, playlist, and share buttons currently have no behavior. |
-| `user_management/frontend/src/home_page/Decor.jsx` | Defines reusable SVG `Pudding` and `Sparkle` graphics in React. |
-| `user_management/frontend/src/home_page/Styles.jsx` | Exports shared color and inline-style objects and generates CSS backgrounds for polka dots and piano keys. |
-| `user_management/frontend/src/home_page/UploadPage.jsx` | Holds upload-form state, checks the filename extension, requires title, artist, and file, calls `uploadSong`, and displays loading/success/error feedback. The artist field is sent as the API's `username` form parameter. |
-| `user_management/frontend/src/home_page/UploadPage.css` | Styles the browser's native file-selection button. The rest of the upload page styling is defined in `UploadPage.jsx`. |
-| `user_management/frontend/package.json` | Declares React, React DOM, Vite, the React plugin, and development/build/preview commands. |
+| `frontend/index.html` | Provides the browser document, root element, and module entry script for Vite. |
+| `frontend/src/main.jsx` | Defines the root React component. It renders authentication until a username is supplied, then chooses the homepage or upload screen based on local component state. |
+| `frontend/src/user_management/App.jsx` | Implements the signup and login forms. It posts credentials to the API, handles HTTP and network feedback, stores access and refresh tokens in browser local storage, and calls the parent callback on success. It also contains older refresh/authenticated-fetch helpers that are not used by the upload flow. |
+| `frontend/src/song_upload/api/songApi.js` | Builds the multipart song request, attaches the stored bearer token, tries a refresh and one retry after HTTP 401, and converts unsuccessful responses into user-facing errors. Its API base URL can be set with `VITE_API_BASE_URL`. |
+| `frontend/src/song_upload/home_page/Homepage.jsx` | Composes the header, sidebar, and song cards. The three displayed songs are hard-coded sample data rather than API results. |
+| `frontend/src/song_upload/home_page/Header.jsx` | Renders the Sandinify banner, navigation tabs, search controls, username, and upload button. Most controls are visual placeholders. |
+| `frontend/src/song_upload/home_page/Sidebar.jsx` | Renders a fixed list of sample playlists and decoration; it does not fetch playlist data. |
+| `frontend/src/song_upload/home_page/Songcard.jsx` | Displays the fields of a song object as a card. Playback, playlist, and share buttons currently have no behavior. |
+| `frontend/src/song_upload/home_page/Decor.jsx` | Defines reusable SVG `Pudding` and `Sparkle` graphics in React. |
+| `frontend/src/song_upload/home_page/Styles.jsx` | Exports shared color and inline-style objects and generates CSS backgrounds for polka dots and piano keys. |
+| `frontend/src/song_upload/home_page/UploadPage.jsx` | Holds upload-form state, checks the filename extension, requires title, artist, and file, calls `uploadSong`, and displays loading/success/error feedback. The artist field is sent as the API's `username` form parameter. |
+| `frontend/src/song_upload/home_page/UploadPage.css` | Styles the browser's native file-selection button. The rest of the upload page styling is defined in `UploadPage.jsx`. |
+| `frontend/package.json` | Declares React, React DOM, Vite, the React plugin, and development/build/preview commands. |
 
 ### Backend application source
 
-For the rows below, `.../` in a Java path means `user_management/backend/server/sandinify/src/main/java/com/example/sandinify/`.
+For the rows below, `.../` in a Java path means `backend/src/main/java/com/example/sandinify/`.
 
 | File | How it works |
 |---|---|
-| `user_management/backend/server/sandinify/src/main/java/com/example/sandinify/SandinifyApplication.java` | Spring Boot entry point; starts component scanning, auto-configuration, and the embedded web server. |
+| `backend/src/main/java/com/example/sandinify/SandinifyApplication.java` | Spring Boot entry point; starts component scanning, auto-configuration, and the embedded web server. |
 | `.../auth/api/AuthController.java` | Maps `/api/signup`, `/api/login`, `/api/refresh`, `/api/logout`, and `/api/me`. It validates required account fields, persists password hashes, and coordinates access and refresh token services. |
-| `.../JwtAuthFilter.java` | Runs after the rate-limit filter. It bypasses OPTIONS and public auth paths, verifies bearer tokens on other `/api/` paths, and returns 401 or attaches the username to the request. |
-| `.../JwtService.java` | Builds signed HS256 tokens with username subject and 15-minute expiration, and rejects malformed, unsigned, or expired tokens. |
-| `.../PasswordService.java` | Uses Spring Security's Argon2 encoder for password hashing and verification. |
+| `.../auth/JwtAuthFilter.java` | Runs after the rate-limit filter. It bypasses OPTIONS and public auth paths, verifies bearer tokens on other `/api/` paths, and returns 401 or attaches the username to the request. |
+| `.../auth/JwtService.java` | Builds signed HS256 tokens with username subject and 15-minute expiration, and rejects malformed, unsigned, or expired tokens. |
+| `.../auth/PasswordService.java` | Uses Spring Security's Argon2 encoder for password hashing and verification. |
 | `.../RateLimiterService.java` | Runs a Redis Lua token-bucket script using Redis time, stores token count and timestamp per key, and expires inactive buckets. |
 | `.../RateLimitFilter.java` | Applies the limiter to requests by client IP, returns 429 when the bucket is empty, and fails open if Redis processing throws an exception. |
-| `.../RefreshToken.java` | JPA entity for a refresh-token hash, user ID, expiration timestamp, and revocation flag. |
-| `.../RefreshTokenRepository.java` | Spring Data JPA repository; provides standard CRUD and a derived lookup by token hash. |
-| `.../RefreshTokenService.java` | Generates random refresh secrets for clients, stores only SHA-256 hashes, checks expiry and revocation, and marks tokens revoked on logout. |
-| `.../User.java` | JPA mapping for the unique username and password-hash columns in the `users` table. |
-| `.../UserRepository.java` | Spring Data JPA interface with username existence and lookup queries. |
+| `.../auth/RefreshToken.java` | JPA entity for a refresh-token hash, user ID, expiration timestamp, and revocation flag. |
+| `.../auth/RefreshTokenRepository.java` | Spring Data JPA repository; provides standard CRUD and a derived lookup by token hash. |
+| `.../auth/RefreshTokenService.java` | Generates random refresh secrets for clients, stores only SHA-256 hashes, checks expiry and revocation, and marks tokens revoked on logout. |
+| `.../auth/User.java` | JPA mapping for the unique username and password-hash columns in the `users` table. |
+| `.../auth/UserRepository.java` | Spring Data JPA interface with username existence and lookup queries. |
 | `.../songs/Song.java` | JPA mapping for song title, artist, unique S3 key, processing status, optional analysis fields, failure reason, and creation time. New rows start at `PENDING`. |
 | `.../songs/SongRepository.java` | Standard Spring Data JPA CRUD repository for `Song`. |
 | `.../songs/SongStatus.java` | Defines the lifecycle labels `PENDING`, `PROCESSING`, `READY`, and `FAILED`; no in-repository worker advances them. |
@@ -231,49 +231,49 @@ For the rows below, `.../` in a Java path means `user_management/backend/server/
 | `.../src/test/java/com/example/sandinify/songs/api/SongUploadControllerTest.java` | Verifies successful upload ordering, metadata persistence, pending state, and queue publication with mocked dependencies. |
 | `.../src/test/java/com/example/sandinify/songs/SongRepositoryTest.java` | Uses a JPA test context to save and read a song row and check its initial status and creation timestamp. |
 | `.../src/test/resources/application-test.properties` | Configures the test datasource as an in-memory H2 database. |
-| `user_management/backend/server/sandinify/pom.xml` | Declares Java 25, Spring Boot, web, JPA, Redis, PostgreSQL, S3, JWT, crypto, OpenTelemetry, and test dependencies plus the Spring Boot Maven plugin. |
+| `backend/pom.xml` | Declares Java 25, Spring Boot, web, JPA, Redis, PostgreSQL, S3, JWT, crypto, OpenTelemetry, and test dependencies plus the Spring Boot Maven plugin. |
 | `.../src/main/resources/application.properties` | Configures application name, PostgreSQL/JPA settings, optional local secret-property imports, multipart limits, and S3 environment-variable bindings. |
-| `user_management/backend/server/sandinify/Dockerfile` | Builds a Java 25 runtime image from the Maven JAR, downloads the OpenTelemetry Java agent, and starts the instrumented service on port 8080. |
-| `user_management/backend/server/sandinify/docker-compose.yml` | Starts PostgreSQL, Redis, Jaeger, and the backend; injects runtime environment variables and waits for PostgreSQL health. It does not start the React frontend or a Python worker. |
-| `user_management/backend/server/sandinify/loadtest.js` | Defines k6 scenarios for rate limiting, login, signup, `/api/me`, and token refresh; setup creates a test account and provides tokens to scenarios. |
-| `user_management/backend/server/sandinify/mvnw` and `mvnw.cmd` | Unix and Windows Maven wrapper launchers for running Maven without a separate global Maven install. |
-| `user_management/backend/server/sandinify/.mvn/wrapper/maven-wrapper.properties` | Selects Maven distribution details used by the wrapper. |
-| `user_management/backend/server/sandinify/.gitignore` and `.gitattributes` | Exclude local/build files and define repository text handling for the backend project. |
+| `backend/Dockerfile` | Builds a Java 25 runtime image from the Maven JAR, downloads the OpenTelemetry Java agent, and starts the instrumented service on port 8080. |
+| `backend/docker-compose.yml` | Starts PostgreSQL, Redis, Jaeger, and the backend; injects runtime environment variables and waits for PostgreSQL health. It does not start the React frontend or a Python worker. |
+| `backend/loadtest.js` | Defines k6 scenarios for rate limiting, login, signup, `/api/me`, and token refresh; setup creates a test account and provides tokens to scenarios. |
+| `backend/mvnw` and `mvnw.cmd` | Unix and Windows Maven wrapper launchers for running Maven without a separate global Maven install. |
+| `backend/.mvn/wrapper/maven-wrapper.properties` | Selects Maven distribution details used by the wrapper. |
+| `backend/.gitignore` and `.gitattributes` | Exclude local/build files and define repository text handling for the backend project. |
 | `.github/workflows/ci.yml` | Runs the Maven test suite on pushes and pull requests using Temurin Java 25 and test-only cloud environment values. |
 | `.github/copilot-instructions.md` | Workspace-specific instructions for coding agents; it does not affect the running application. |
 | `.github/modernize/java-upgrade/hooks/scripts/recordToolUse.ps1` | Reads a tool-call event from standard input, filters for terminal and modernization tools, and appends the event as JSONL under the hooks directory. |
 | `.github/modernize/java-upgrade/hooks/scripts/recordToolUse.sh` | Bash counterpart to the PowerShell recorder; it filters the same event types and appends JSONL for the modernization extension. |
 | `.github/modernize/java-upgrade/.gitignore` | Excludes generated or session-specific modernization hook output. |
-| `user_management/backend/server/sandinify/.vscode/settings.json` | Sets the workspace Java null-analysis preference for VS Code. |
+| `backend/.vscode/settings.json` | Sets the workspace Java null-analysis preference for VS Code. |
 | `.idea/` project files | IntelliJ project/compiler/module/workspace metadata; they affect local IDE setup, not the application runtime. |
 
 ### Audio-analysis workspace
 
 | File or directory | How it works |
 |---|---|
-| `audio_analysis/shared/__init__.py` | Empty package marker. |
-| `audio_analysis/shared/features.py` | Empty placeholder for shared audio feature logic. |
-| `audio_analysis/training/build_matrix.py` | Empty placeholder; no feature-matrix builder is implemented. |
-| `audio_analysis/training/build_thresholds.py` | Empty placeholder; no threshold-generation logic is implemented. |
-| `audio_analysis/training/explore.py` | Empty placeholder for exploratory analysis. |
-| `audio_analysis/training/extract.py` | Empty placeholder; no audio extraction pipeline is implemented. |
-| `audio_analysis/training/inspect_deam.py` | Empty placeholder for inspecting a DEAM dataset. |
-| `audio_analysis/training/predict_one.py` | Empty placeholder; no single-file prediction flow is implemented. |
-| `audio_analysis/training/train.py` | Empty placeholder; no model training pipeline is implemented. |
-| `audio_analysis/training/requirements.txt` | Lists Essentia, NumPy, pandas, scikit-learn, and XGBoost without version pins. |
-| `audio_analysis/models/` | Empty directory; no trained model files are present. |
+| `song_upload/audio_analysis/shared/__init__.py` | Empty package marker. |
+| `song_upload/audio_analysis/shared/features.py` | Empty placeholder for shared audio feature logic. |
+| `song_upload/audio_analysis/training/build_matrix.py` | Empty placeholder; no feature-matrix builder is implemented. |
+| `song_upload/audio_analysis/training/build_thresholds.py` | Empty placeholder; no threshold-generation logic is implemented. |
+| `song_upload/audio_analysis/training/explore.py` | Empty placeholder for exploratory analysis. |
+| `song_upload/audio_analysis/training/extract.py` | Empty placeholder; no audio extraction pipeline is implemented. |
+| `song_upload/audio_analysis/training/inspect_deam.py` | Empty placeholder for inspecting a DEAM dataset. |
+| `song_upload/audio_analysis/training/predict_one.py` | Empty placeholder; no single-file prediction flow is implemented. |
+| `song_upload/audio_analysis/training/train.py` | Empty placeholder; no model training pipeline is implemented. |
+| `song_upload/audio_analysis/training/requirements.txt` | Lists Essentia, NumPy, pandas, scikit-learn, and XGBoost without version pins. |
+| `song_upload/audio_analysis/models/` | Empty directory; no trained model files are present. |
 
 ### Documentation, assets, and repository configuration
 
 | File | How it works |
 |---|---|
 | `README.md` | Project overview, auth design, API routes, operational setup, test/load-test notes, upload design references, and planned features. Some statements describe intended architecture; this walkthrough reflects checked-in code. |
-| `user_management/Homepage.md` | Early frontend notes describing placeholder pages and component intentions. |
+| `song_upload/Homepage.md` | Early frontend notes describing placeholder pages and component intentions. |
 | `user_management/User_Auth.md` | Authentication and frontend/backend design notes, including embedded diagrams. |
-| `User_Auth_Diagram.png` and `image.png` | Static visual assets referenced by project documentation and the README. |
+| `assets/User_Auth_Diagram.png` and `assets/image.png` | Static visual assets referenced by project documentation and the README. |
 | `.gitignore` | Excludes IDE files, frontend dependencies/build output, local Python environments/data, models, and environment files. |
-| `user_management/frontend/package-lock.json` | Locks the npm dependency tree for reproducible installs; it is generated package metadata, not handwritten application logic. |
-| `user_management/backend/server/sandinify/HELP.md` | Maven-generated help and Spring documentation links; it does not implement application behavior. |
+| `frontend/package-lock.json` | Locks the npm dependency tree for reproducible installs; it is generated package metadata, not handwritten application logic. |
+| `backend/HELP.md` | Maven-generated help and Spring documentation links; it does not implement application behavior. |
 
 ## End-to-End Flows
 

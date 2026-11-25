@@ -3,7 +3,7 @@
 
 # Installed frontend dependencies and build output
 **/node_modules/
-/user_management/frontend/dist/
+/frontend/dist/
 
 # JVM crash logs
 hs_err_pid*.log
@@ -11,9 +11,9 @@ hs_err_pid*.log
 *.iml
 **/node_modules/
 **/dist/
-audio_analysis/training.data
+/song_upload/audio_analysis/training.data
 .env
 .venv
-audio_analysis/models/
-audio_analysis/__pycache__/
-audio_analysis/**/*.py[cod]
+/song_upload/audio_analysis/models/
+/song_upload/audio_analysis/__pycache__/
+/song_upload/audio_analysis/**/*.py[cod]

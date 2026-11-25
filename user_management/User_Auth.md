@@ -13,14 +13,14 @@ App.jsx: Actual Content
 **Index.html**
 1. Initialize doctype and meta-data for the website
 2. Initialize "root" div (where React will edit) in body
-**src/main.jsx**
+**frontend/src/main.jsx**
 1. Import React engine 
 2. Import React DOM for websites
 3. Import Our app
 4. Look for root div and allow to start rendering
 5. Initialize Strict Mode to help easily find bugs
 6. Calls main component
-**src/App.jsx**
+**frontend/src/user_management/App.jsx**
 1. Import React tools with proper syntax import { toolName } from 'libraryName'; 
 Understand key tools: 'useState' is used to store & update data.
 

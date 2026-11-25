@@ -36,10 +36,10 @@
 
 ---
 ## Homepage Preview
-![Sandinify Homepage](image.png)
+![Sandinify Homepage](assets/image.png)
 
 # Sandinify User Authentication Section
-![User Authentication Diagram](User_Auth_Diagram.png)
+![User Authentication Diagram](assets/User_Auth_Diagram.png)
 A Spring Boot backend for user authentication, built with the scalability and observability practices of a production service: a Redis-backed distributed rate limiter, JWT access and refresh tokens, integration tests, and load testing with distributed tracing.
 
 ## Features
@@ -198,7 +198,7 @@ GitHub starts a fresh, empty Ubuntu virtual machine for each run and discards it
 |---|---|---|
 | `actions/checkout` | Clones the repo onto the VM | The VM starts with no code |
 | `actions/setup-java` (Temurin 25, `cache: maven`) | Installs Java 25 and caches Maven downloads | The VM has no Java, and the version must match `pom.xml`. Caching avoids re-downloading dependencies on every run |
-| `./mvnw test` with `working-directory` | Runs every test in `src/test/java` | The Maven project is in `user_management/backend/server/sandinify`, not the repo root |
+| `./mvnw test` with `working-directory` | Runs every test in `src/test/java` | The Maven project is in `backend`, not the repo root |
 
 The workflow triggers on `push` and `pull_request`, so a failing change shows a red check before it is merged. It runs the integration and unit tests only. The k6 load tests are not part of CI, because they need a running app and real traffic.
 
@@ -262,6 +262,7 @@ Key methods are annotated with OpenTelemetry's `@WithSpan`, which automatically 
 ```bash
 git clone https://github.com/<sandinacharles1>/sandinify.git
 cd sandinify
+cd backend
 docker compose up --build
 ```
 
@@ -270,12 +271,22 @@ Docker Compose starts the Spring Boot app, PostgreSQL, and Redis. The Dockerfile
 ### Run the tests
 
 ```bash
+cd backend
 ./mvnw test
+```
+
+### Run the frontend
+
+```bash
+cd frontend
+npm ci
+npm run dev
 ```
 
 ### Run the load test
 
 ```bash
+cd backend
 k6 run loadtest.js
 ```
 
@@ -317,10 +328,10 @@ sandinify Service (Stable internal IP & load balancer)
 * **Multi-stage `Dockerfile`:** Replaced the single-stage Dockerfile (which relied on a pre-built `target/*.jar` from my laptop) with a two-stage build. Stage 1 compiles and packages the JAR inside a container with Maven and Java 25; Stage 2 copies *only* the finished JAR into a lightweight Java runtime image (leaving build tools and source code behind). Added `.dockerignore` to keep `.git`, `target/`, and `secret.properties` out of the build context.
 * **Environment-driven hosts and CORS:** Inside a container, `localhost` means *that container itself*, not my laptop or another container. I updated `application.properties` so `SPRING_DATASOURCE_URL` and `SPRING_DATA_REDIS_HOST` are injected via environment variables (keeping localhost fallbacks for local development). I also centralized the hardcoded `http://localhost:5173` **CORS** (Cross-Origin Resource Sharing, the browser rule controlling which frontend URL can call the backend) origin into a single `app.cors.allowed-origin` property across `AuthController`, `SongUploadController`, `JwtAuthFilter`, and `RateLimitFilter` so early error responses respect the configured frontend address.
 
-### Step 2: Provision the Local Cluster (`kind-config.yaml`)
+### Step 2: Provision the Local Cluster (`k8s/kind-config.yaml`)
 > **What this means:** Building the empty Kubernetes environment inside Docker on my laptop and wiring up a port (`8081`) so outside traffic can reach inside it.
 
-* **Cluster & port mapping:** Installed **kind** (Kubernetes IN Docker, a tool that runs a local Kubernetes cluster inside Docker containers) and created `kind-config.yaml`. This file defines a single `control-plane` **node** (the virtual machine/container that manages the cluster) with the label `ingress-ready=true` (a marker telling the ingress controller it can run on this node). I configured `extraPortMappings` to connect laptop port `8081` to container port `80`, creating an entry doorway without colliding with port `8080`.
+* **Cluster & port mapping:** Installed **kind** (Kubernetes IN Docker, a tool that runs a local Kubernetes cluster inside Docker containers) and created `k8s/kind-config.yaml`. Use this path with kind's `--config` option when creating the cluster. The file defines a single `control-plane` **node** (the virtual machine/container that manages the cluster) with the label `ingress-ready=true` (a marker telling the ingress controller it can run on this node). I configured `extraPortMappings` to connect laptop port `8081` to container port `80`, creating an entry doorway without colliding with port `8080`.
 * **Image loading:** Built `sandinify:kind` and copied it directly into the cluster (`kind load docker-image sandinify:kind --name sandinify`), because kind nodes have their own isolated image storage and cannot see images sitting in my laptop's regular Docker list.
 
 ### Step 3: Deploy Workloads & Isolate Secrets (`kind-workloads.yaml` & `apply-kind.ps1`)
@@ -441,6 +452,8 @@ To verify that Kubernetes balanced traffic across every replica and to quantify 
 
 ## Feature Extraction Design
 <img width="596" height="2619" alt="Song Upload Architecture" src="https://github.com/user-attachments/assets/184e37dc-a0f7-4845-8602-8fae1f76f118" />
+
+The Python audio-analysis workspace for this design is in `song_upload/audio_analysis/`. Its current training scripts are placeholders and are not yet part of the upload runtime.
 
 # Song Retrieval System Design
 <img width="900" height="1734" alt="Song Upload Architecture (3)" src="https://github.com/user-attachments/assets/ebf43e25-0187-4727-95b7-968f79fc78f2" />

@@ -1,0 +1,22 @@
+.auth-form-grid {
+  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+}
+
+.auth-form-divider {
+  justify-self: center;
+  width: 1px;
+  min-height: 100%;
+  margin: 0 8px;
+}
+
+@media (max-width: 640px) {
+  .auth-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .auth-form-divider {
+    width: 100%;
+    min-height: 0;
+    height: 1px;
+  }
+}
