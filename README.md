@@ -2,37 +2,57 @@
 
 **Sandinify** is a personal project I'm building to learn how backend systems and system design work. It is a music application heavily inspired by Spotify, but with a unique twist that lets you analyze the actual frequencies of a song and find matching books!
 ## Table of Contents
-* [Homepage Preview](#homepage-preview)
-* [Sandinify User Authentication Section](#sandinify-user-authentication-section)
-  * [Features](#features)
-  * [Tech Stack](#tech-stack)
-  * [API Endpoints](#api-endpoints)
-  * [Architecture](#architecture)
-    * [Project Structure](#project-structure)
-  * [Design Decisions](#design-decisions)
-    * [Rate limiter: token bucket](#rate-limiter-token-bucket)
-    * [Why Redis?](#why-redis)
-    * [Why Lua for atomicity?](#why-lua-for-atomicity)
-    * [Why not handle it in Java?](#why-not-handle-it-in-java)
-    * [Failure behavior](#failure-behavior)
-    * [Authentication](#authentication)
-  * [Unit Testing](#testing)
-  * [Continuous Integration](#continuous-integration)
-  * [Load Testing and Distributed Tracing](#load-testing-and-distributed-tracing)
-    * [Initial results](#initial-results)
-  * [Getting Started](#getting-started)
-    * [Prerequisites](#prerequisites)
-    * [Run](#run)
-    * [Run the tests](#run-the-tests)
-    * [Run the load test](#run-the-load-test)
-*  [What I Learned](#what-i-learned)
-* [Running Multiple Instances Behind a Load Balancer](#running-multiple-instances-behind-a-load-balancer)
-* [Song Upload System Design](#song-upload-system-design)
-  * [Upload System Design (Emphasis on ML)](#current-upload-design)
-  * [Upload System Design (Emphasis on transcoding)](#extra-upload-design)
-  * [Feature Extraction System Design](#feature-extraction-design)
-*  [Song Retrieval System Design](#song-retrieval-system-design)
-* [Upcoming Features](#upcoming-features)
+
+- [Homepage Preview](#homepage-preview)
+- [Sandinify User Authentication Section](#sandinify-user-authentication-section)
+  - [Features](#features)
+  - [Tech Stack](#tech-stack)
+  - [API Endpoints](#api-endpoints)
+  - [Architecture](#architecture)
+  - [Project Structure](#project-structure)
+  - [Design Decisions](#design-decisions)
+    - [Rate limiter: token bucket](#rate-limiter-token-bucket)
+    - [Why Redis?](#why-redis)
+    - [Why Lua for atomicity?](#why-lua-for-atomicity)
+    - [Why not handle it in Java?](#why-not-handle-it-in-java)
+    - [Failure behavior](#failure-behavior)
+  - [Authentication](#authentication)
+  - [Testing](#testing)
+  - [Continuous Integration](#continuous-integration)
+  - [Load Testing and Distributed Tracing](#load-testing-and-distributed-tracing)
+    - [Initial results](#initial-results)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Run](#run)
+  - [Run the tests](#run-the-tests)
+  - [Run the frontend](#run-the-frontend)
+  - [Run the load test](#run-the-load-test)
+- [What I Learned](#what-i-learned)
+- [Running Multiple Instances Behind a Load Balancer](#running-multiple-instances-behind-a-load-balancer)
+  - [Request Flow Architecture](#request-flow-architecture)
+  - [Chronological Setup, Changes & Engineering Decisions](#chronological-setup-changes--engineering-decisions)
+  - [Database Connection Pooling & Concurrency (HikariCP)](#database-connection-pooling--concurrency-hikaricp)
+  - [Load-Testing on Multiple Instances](#load-testing-on-multiple-instances)
+  - [Issues Encountered & How I Solved Them](#issues-encountered--how-i-solved-them)
+- [Song Upload System Design](#song-upload-system-design)
+  - [Current Upload Design](#current-upload-design)
+  - [Extra Upload Design](#extra-upload-design)
+  - [Feature Extraction Design](#feature-extraction-design)
+  - [Shared Concepts](#shared-concepts-used-by-upload-retrieval-and-fetching)
+  - [Upload Flow](#upload-flow)
+  - [Background transcoding: the Python worker](#background-transcoding-the-python-worker-backendtranscoding_workermainpy)
+  - [Tests for upload](#tests-for-upload)
+  - [Issues worth remembering (upload)](#issues-worth-remembering-upload)
+  - [Known limitations (upload)](#known-limitations-upload)
+- [Song Retrieval System Design](#song-retrieval-system-design)
+  - [Why metadata and audio are separate APIs](#why-metadata-and-audio-are-separate-apis)
+  - [Issues worth remembering (retrieval)](#issues-worth-remembering-retrieval)
+  - [Known limitations (retrieval)](#known-limitations-retrieval)
+- [Song Fetching System Design](#song-fetching-system-design)
+  - [Tests for fetching](#tests-for-fetching)
+  - [Issues worth remembering (fetching)](#issues-worth-remembering-fetching)
+  - [Known limitations (fetching)](#known-limitations-fetching)
+- [Upcoming Features](#upcoming-features)
 
 ---
 ## Homepage Preview
@@ -444,6 +464,7 @@ To verify that Kubernetes balanced traffic across every replica and to quantify 
 | **Jaeger v1 end-of-life deprecation** | Deploying `jaegertracing/all-in-one:1.76.0` logged an end-of-life warning. | Upgraded the Deployment manifest to Jaeger **v2.23.0** (`cr.jaegertracing.io/jaegertracing/jaeger:2.23.0`) and verified trace ingestion via the `/api/v3/services` endpoint. |
 
 # Song Upload System Design
+
 ## Current Upload Design 
 <img width="1156" height="1351" alt="Song Upload Architecture (1)" src="https://github.com/user-attachments/assets/6df5a25b-ef5c-4436-81f6-12ef5e0653e2" />
 
@@ -455,9 +476,317 @@ To verify that Kubernetes balanced traffic across every replica and to quantify 
 
 The Python audio-analysis workspace for this design is in `song_upload/audio_analysis/`. Its current training scripts are placeholders and are not yet part of the upload runtime.
 
+## Shared Concepts (used by upload, retrieval, and fetching)
+
+**One `songs` row in PostgreSQL is the source of truth.** S3 holds files and Redis holds messages, but the row says what state a song is in.
+
+| Column | Meaning |
+|---|---|
+| `id` | Numeric ID, also used in every S3 path |
+| `title`, `artist_name` | Display info |
+| `genre`, `mood`, `tags`, `description` | Entered manually for now (no ML yet) |
+| `s3_key` | Location of the **original upload** (the worker's input) |
+| `manifest_url` | Location of the **HLS entry playlist** (the worker's output). Null until transcoding succeeds |
+| `status` | `PENDING` → `PROCESSING` → `READY` or `FAILED` |
+| `failure_reason` | First 500 characters of the error if the worker failed |
+| `created_at` | Used to sort newest-first |
+
+**S3 layout** (one private bucket, one prefix per song):
+
+```
+raw/{id}/original.mp3                   <- what the user uploaded
+processed/{id}/master.m3u8              <- lists the quality tiers
+processed/{id}/96k/index.m3u8           <- lists that tier's chunks
+processed/{id}/96k/chunk_000.ts ...     <- 4-second audio pieces
+processed/{id}/160k/...   processed/{id}/320k/...
+```
+
+Prefixing by song ID means two songs can never overwrite each other's `chunk_000.ts`, and one prefix delete removes everything for a song.
+
+**Redis lists** (a Redis list is an ordered collection you push onto one end and pop from the other):
+
+| Key | Holds |
+|---|---|
+| `queue:song-analysis` | Jobs waiting to be processed (FIFO: first in, first out) |
+| `queue:song-analysis:processing` | Jobs a worker has taken but not finished |
+| `queue:song-analysis:dead` | Malformed jobs that can never succeed |
+
+A job is JSON: `{"song_id": 2, "s3_key": "raw/2/original.mp3"}`.
+
+**Three separate backend endpoints**, each with a different job:
+
+| Endpoint | Purpose | Returns |
+|---|---|---|
+| `POST /api/songs/upload` (alias `POST /api/v1/tracks`) | Ingest a file | JSON `{message, songId, status}` |
+| `GET /api/songs` | List song metadata | JSON array |
+| `GET /api/songs/{id}/hls/{path}` | Serve playlist and chunk bytes | Raw file bytes, not JSON |
+
+**Why both `s3_key` and `manifest_url`?** They point at different files. `s3_key` is the input; the worker needs it to know what to transcode. `manifest_url` is the output and only exists once transcoding succeeds. Keeping the original also allows re-transcoding later without asking the artist to re-upload (this happened when the output codec changed, see Song Fetching).
+
+**What `PENDING` means.** The row exists, the original is in S3, and no worker has started. The worker does **not** scan the database for `PENDING` rows; the trigger is the Redis message. The status is a label for the UI and for humans. If a message is lost, the song stays `PENDING` forever because nothing retries it. Fixing that needs a sweeper (a periodic task that re-queues rows stuck in `PENDING` or `PROCESSING` too long). That is a known gap.
+
+## Upload Flow
+
+```
+Browser -> Java API -> (1) insert row PENDING -> (2) upload original to S3
+                    -> (3) publish job to Redis -> (4) return 201 immediately
+                                                        |
+                              Python worker pops job, transcodes, uploads HLS, marks READY
+```
+
+### Step by step
+
+**Step 1: Accept the upload (`SongUploadController.uploadSong`)**
+- **Action:** A multipart request (`multipart/form-data` is the HTTP format for sending a file plus text fields in one request) with `file`, `name`, `username` (stored as the artist name), and optional `genre`, `mood`, `tags`, `description`.
+- **Validation:** File must be non-empty; name and artist must be non-blank and at most 200 characters; genre and mood at most 100. Failures return 400.
+- **Files:** `SongUploadController.java`, `UploadPage.jsx`, `songApi.js`.
+
+**Step 2: Insert the row first, then upload to S3**
+- The real S3 key is `raw/{id}/original.ext`, and the `id` only exists after the database insert. So the row is inserted with a placeholder key (`pending/<random UUID>`), the file is uploaded using the new ID, and then the real key is saved.
+- If the S3 upload fails, the row is deleted so no row points at a file that doesn't exist.
+- **Files:** `S3StorageService.java`, `Song.java`, `SongRepository.java`.
+
+**Step 3: Publish a job to Redis and return immediately**
+- `AnalysisQueue.publish(id, s3Key)` pushes the job JSON onto `queue:song-analysis`, and the API returns 201 with `status: PENDING`.
+- **Why a queue:** transcoding takes tens of seconds and a lot of CPU. If the HTTP request waited, the browser would hang and server threads would be tied up. The queue lets the API answer in milliseconds while a separate process does the slow work.
+- **Why Redis:** it was already in the stack for rate limiting, its list type is a FIFO, and it has an atomic "pop from one list and push onto another" command that makes crash recovery possible.
+- If Redis is down, the API returns **503** (with the `songId`) instead of claiming success. The original stays in S3 and the row stays `PENDING`.
+
+**Step 4: Persist the HLS entry point**
+- Added a nullable `manifest_url` column through a Flyway migration (`V2__add_manifest_url_to_songs.sql`). Flyway is a tool that applies numbered SQL files to the database in order. `V3` later added `description`.
+- Verified with `SongRepositoryTest` before any worker code was written, so the database contract was settled first.
+
+**Step 5: Manual metadata**
+- Genre, mood, tags, and description are typed by the uploader for now, since the ML analysis is not built. After a successful upload the app navigates to the homepage, which reloads the list.
+
+### Background transcoding: the Python worker (`backend/transcoding_worker/main.py`)
+
+**Why a separate Python process:** it keeps the heavy FFmpeg work out of the Java API, and Python has simple tooling for S3 (boto3), Postgres (psycopg), and Redis. It runs as its own Kubernetes Deployment with **one replica**.
+
+**Terms:**
+- **Transcoding:** decoding audio and re-encoding it in another format or bitrate.
+- **Bitrate:** bits of audio per second. Higher means better quality and bigger files.
+- **HLS (HTTP Live Streaming):** audio cut into short chunks plus text playlists (`.m3u8`). The player downloads chunks over normal HTTP.
+- **Master playlist:** lists the quality tiers. **Media playlist (`index.m3u8`):** lists one tier's chunks.
+- **FFmpeg / ffprobe:** a command-line media converter, and its companion that reads file metadata without converting.
+
+**What each function does:**
+
+| Function | Purpose |
+|---|---|
+| `load_settings` | Reads environment variables into one `Settings` object; fails fast if required ones are missing |
+| `get_source_bitrate_kbps` | Runs `ffprobe`, finds the first audio stream, and reads its bitrate. Falls back to the file-level bitrate (lossless files often only have that). If neither exists, assumes 320 and logs a warning. Errors if there is no audio stream |
+| `select_tiers` | Keeps only tiers at or below the source bitrate, always at least 96k. A 128 kbps source gives `[96k]`; 192 kbps gives `[96k, 160k]`. Encoding above the source adds file size and no quality |
+| `transcode` | Runs one `ffmpeg` command per tier, then writes `master.m3u8`. Key flags: `-vn` drop video/cover art, `libmp3lame` MP3 encoder, `-b:a` bitrate, `-ar 44100` sample rate, `-hls_time 4` 4-second chunks, `-hls_playlist_type vod` complete (non-live) playlist, `independent_segments` each chunk decodes on its own so tier switches work at chunk boundaries. A non-zero exit raises an error with the tail of stderr |
+| `build_master_playlist` | Builds the master playlist: per tier a `BANDWIDTH` (what the player compares to measured speed), a `CODECS` string, and a **relative** path like `96k/index.m3u8` |
+| `content_type_for` | Maps `.m3u8` to `application/vnd.apple.mpegurl` and `.ts` to `video/mp2t`; errors on anything else as a guard against uploading unexpected files |
+| `output_key` | Builds `processed/{id}/{relative path}` |
+| `upload_outputs` | Uploads every generated file with the right Content-Type and **no ACL** |
+| `manifest_url` | Builds the stored entry URL |
+| `set_processing` | Skips the job if the song is already `READY` (returns False); otherwise sets `PROCESSING` and clears `manifest_url` and `failure_reason` |
+| `set_ready` | Sets `READY` and `manifest_url`; checks one row was updated so a missing row is an error, not a silent no-op |
+| `set_failed` | Sets `FAILED` and stores the first 500 characters of the error |
+| `process_job` | One song end to end: validate, mark processing, download original to a temp directory, transcode, upload, mark ready. Any exception marks the song `FAILED`. The temp directory is deleted automatically |
+| `run_worker` | The main loop (below) |
+| `recover_in_flight_jobs` | At startup, moves everything in the processing list back onto the waiting list |
+| `main` | Builds clients, runs recovery, starts the loop |
+
+**Reliability pattern (the loop):**
+1. `BRPOPLPUSH` blocks up to 5 seconds, then **atomically** moves a job from the waiting list to the processing list. Atomic means there is no moment where the job is in neither list. A plain `BRPOP` would lose the job if the worker crashed right after popping.
+2. After the job finishes, `LREM` removes it from the processing list.
+3. On restart, `recover_in_flight_jobs` re-queues anything left in the processing list.
+4. This gives **at-least-once delivery**: a job runs at least once, possibly twice. That is only safe if the work is **idempotent** (repeating it gives the same result), which is why `set_processing` skips songs that are already `READY`.
+5. Malformed jobs (bad JSON, wrong shape, `ValueError`) go to the dead-letter list instead of retrying forever.
+
+**Simplification decision:** an earlier simpler design used plain `BRPOP`. I discussed dropping recovery for an MVP, then chose to keep the processing-list pattern and replaced the `ffmpeg-python` wrapper with direct `subprocess` calls to `ffmpeg` and `ffprobe`.
+
+### Tests for upload
+
+- **`SongRepositoryTest`:** saves a song with all fields (including `manifest_url`, genre, mood, tags, description) to a real database and reads it back. Proves the entity mapping and Flyway migrations agree and the new columns persist. Does not prove any API behavior.
+- **`SongUploadControllerTest`:** calls the controller directly with mocked S3, repository, and queue. Proves the saved song carries the submitted metadata and `PENDING` status, optional fields may be null, and failure paths behave. Does not exercise HTTP parsing, multipart handling, or security filters.
+- **`AnalysisQueueTest`:** covers publishing the job to Redis.
+- **Worker tests (`test_main.py`, Python `unittest`, 10 tests):** cover tier selection (128 kbps gives only 96k, 192 kbps gives 96k and 160k), the master playlist listing only generated tiers, uploads sending no ACL, the recovery command, and the consume-then-acknowledge sequence. These use fake Redis, S3, and database objects, so they prove logic and strings, not that real services accept them (see the `RPOPRPUSH` issue below).
+
+### Issues worth remembering (upload)
+
+**Worker crashed on startup (`RPOPRPUSH`).**
+- *Symptom:* after deploying the worker to Kind, the pod restarted in a loop and never processed anything.
+- *Investigation:* the logs showed it died before consuming a job. In `main`, recovery runs before the loop, so the crash was in recovery.
+- *Root cause:* the recovery code sent an invalid Redis command, `RPOPRPUSH`. The correct command is `RPOPLPUSH` (pop from the right of one list, push onto the left of another).
+- *Why tests missed it:* a fake Redis accepts any command name.
+- *Fix:* corrected the command and added a test asserting the exact command. *Lesson:* mocks verify the code's intent, not that the real service accepts it, so deploy and observe.
+
+**S3 rejected the worker's uploads.**
+- *Symptom:* the worker started and picked up a job, but its output upload failed.
+- *Clue:* the Java upload to the same bucket worked, so credentials and the bucket were fine. The difference had to be in the request.
+- *Root cause:* the worker set `ACL=public-read` on each object, but the bucket has ACLs disabled (bucket-owner-enforced).
+- *Fix:* removed the ACL. The bucket later became private by design (see Song Fetching), which made the ACL wrong anyway.
+
+**Malformed retry job in the dead-letter queue.**
+- *Symptom:* a manually re-queued job went to `queue:song-analysis:dead`.
+- *Root cause:* PowerShell stripped the quotes from the JSON passed on the command line, so the worker could not parse it. The dead-letter queue did its job: it kept the bad message instead of looping.
+- *Fix:* re-queued through stdin (`redis-cli -x`), after confirming the dead entry's contents before removing it.
+
+**A song stuck in `PROCESSING` (root cause not found).**
+- *Symptom:* after re-queueing two songs, one became `READY` and one stayed `PROCESSING`.
+- *Investigation:* I checked the waiting and processing list lengths, the worker logs, and the processes inside the pod. I confirmed the original existed in S3 and downloaded it with a timed test, which ruled out S3. The worker was alive but producing nothing.
+- *Resolution:* restarting the worker ran startup recovery and the job completed.
+- *Likely cause (hypothesis, not confirmed):* a hung FFmpeg, since `subprocess.run` has no timeout. *Follow-ups:* add a subprocess timeout and a stale-`PROCESSING` sweeper.
+
+**Source bitrate below the top tier.**
+- *Question:* what happens when the upload is below 320 kbps?
+- *Reasoning:* encoding upward cannot restore lost quality; it only makes bigger files. So the worker probes the source with `ffprobe` and only generates tiers at or below it (minimum 96k so the song always plays).
+- *Trade-off:* a 128 kbps source tops out at 96k, even for listeners on fast connections. This only affects new jobs; songs already `READY` were not reprocessed automatically.
+
+**Redis down but upload reported success.** The original handler ignored a failed publish. It now returns 503, so the client knows the song was saved but not queued.
+
+### Known limitations (upload)
+
+- The sequence diagram says the worker atomically claims a row from `PENDING` to `PROCESSING`. The current code does a SELECT then an UPDATE without a lock, so it is not an atomic claim. Duplicates are prevented today by running one worker replica.
+- No timeout on FFmpeg; no sweeper for stuck rows; `FAILED` songs are not retried.
+- If an unexpected exception escapes `process_job` (for example the database is down inside `set_failed`), the job stays in the processing list until the next restart.
+
 # Song Retrieval System Design
+
+
+## Flow
+
+```
+Homepage.jsx -> fetchSongs() -> GET /api/songs (with JWT)
+             -> Java: findAllByOrderByCreatedAtDesc() -> map rows to SongResponse -> JSON array
+             -> frontend prefixes manifestUrl with the API base -> render cards
+```
+
+## What the API returns
+
+`GET /api/songs` returns an array of: `id, title, artistName, genre, mood, tags, description, status, manifestUrl, createdAt`.
+- `manifestUrl` is `"/api/songs/{id}/hls/master.m3u8"` only when `status == READY` **and** the database `manifest_url` is non-null; otherwise it is `null`.
+- It deliberately omits `s3_key` and `failure_reason`.
+- The frontend never sees an S3 URL. `fetchSongs` just prepends the API base URL.
+
+## Frontend behavior
+
+- `fetchSongs` (`songApi.js`) throws a readable error on a non-OK response or a non-array body.
+- `Homepage.jsx` shows loading, error, and empty states, then one card per song with a status badge. The Play button is enabled only when `status` is `READY` and `manifestUrl` exists.
+- Only the main songs area uses real data; the playlist sidebar is untouched.
+
+
+## Why metadata and audio are separate APIs
+
+Listing songs is cheap and returns small JSON. Audio bytes are large and need their own path (streaming, a range of qualities, auth, content types). Separating them lets the list load instantly while audio loads only when someone presses Play.
+
+## Issues worth remembering (retrieval)
+
+**Homepage showed "Failed to fetch."**
+- *First reasoning:* "Failed to fetch" means the browser received no HTTP response at all, which is different from a 404 or 500 (those would show an HTTP status message). So the question was why no response, not why a bad one.
+- *Check 1:* is the backend reachable? `localhost:8080` was reachable at times; the port-forward had also died, since `kubectl port-forward` is tied to one pod and dies on each restart.
+- *Check 2:* browsers send a CORS preflight (an `OPTIONS` permission check) before cross-origin requests. I sent one with curl to both `/api/me` and `/api/songs`. `/api/me` returned CORS headers; `/api/songs` did not.
+- *Conclusion:* the running backend did not have `/api/songs` at all, so it had no CORS handling for it.
+- *Confirmation:* the local image ID differed from the image ID running in the pod.
+- *Fix:* `kind load docker-image` (note: `--name sandinify`, the cluster name, not `kind-sandinify`, the kubectl context name) and a deployment restart. Then restart the port-forward.
+
+**Login lost on refresh** (affects retrieval because every request needs a token). The tokens were stored but the username was not, so the app could not rebuild the signed-in state. It now stores the username and validates the session with `/api/me`, refreshing an expired access token when possible.
+
+## Known limitations (retrieval)
+
+- Returns all songs with no pagination.
+- Not filtered by uploader, because songs do not store an owner.
+- "Recently listened" in the UI is a label only; nothing tracks listens yet.
+
+# Song Fetching System Design
+
+*(How the browser fetches and plays the audio: HLS streaming with adaptive bitrate.)*
+
 <img width="900" height="1734" alt="Song Upload Architecture (3)" src="https://github.com/user-attachments/assets/ebf43e25-0187-4727-95b7-968f79fc78f2" />
 
+## Flow
+
+```
+Click Play -> hls.js requests master.m3u8 (with JWT) -> Java proxy reads private S3 -> bytes returned
+           -> hls.js picks a tier, downloads chunks, appends to the browser buffer -> <audio> plays
+           -> each chunk's download speed feeds the next quality decision
+```
+
+## Backend: authenticated HLS proxy (`GET /api/songs/{songId}/hls/{*assetPath}`)
+
+- **What it does:** the browser asks Java, Java fetches the object from private S3, and Java streams the bytes back.
+- **Why a proxy:** the alternatives were making the bucket public (anyone with a URL could download every song) or signed URLs. Proxying reuses the existing JWT check, keeps the bucket private, and needs no S3 CORS configuration.
+- **Path allowlist:** a regex accepts only `master.m3u8` or `(96k|160k|320k)/(index.m3u8|chunk_<digits>.ts)`. This blocks path traversal, where a crafted path like `../../raw/...` could read other bucket objects.
+- **Why it works without rewriting playlists:** the playlists use relative paths. When the player loads `/api/songs/2/hls/master.m3u8` and sees `96k/index.m3u8`, it resolves to `/api/songs/2/hls/96k/index.m3u8`, which is exactly this route.
+- **`StreamingResponseBody`:** copies bytes from the S3 stream to the HTTP response as they arrive, instead of loading the whole file into Java memory. Sets `Content-Length` from S3 metadata and the correct Content-Type.
+- **Errors:** 404 if S3 reports the object missing, 502 (bad gateway) for other S3 errors, 400 for a path outside the allowlist.
+
+## Frontend: how audio reaches the speakers (`AdaptivePlayer.jsx`, `adaptivePlayback.js`)
+
+**Why hls.js:** an `<audio>` element cannot play HLS by itself in most browsers and cannot send an `Authorization` header. hls.js downloads the playlists and chunks itself (adding the JWT through `xhrSetup`), then feeds the bytes to the browser through Media Source Extensions (the browser API that lets JavaScript supply media data to an `<audio>` element). Safari can play HLS natively, so that path skips hls.js.
+
+**Where the audio sits:** playback reads from the browser's buffer, and the network fills the buffer. The buffer is hls.js's SourceBuffer, not a custom structure. `getBufferedAhead` reads `audio.buffered` (the time ranges currently loaded) and returns `end - currentTime` for the range containing the playhead.
+
+**How it decides which quality to download:**
+
+*At startup* (`getInitialThroughputEstimate`):
+1. A saved estimate from `localStorage`, keyed by network type, from earlier playback.
+2. Otherwise a lookup table from the browser's `navigator.connection` hint (for example Wi-Fi 10 Mbps, 4G 4 Mbps, 3G 0.75 Mbps).
+3. Otherwise 96 kbps, so the first chunk is small (about 48 KB for 4 seconds) and playback starts quickly.
+
+`selectLevelIndex` then picks the highest tier whose bitrate is at most **0.8 x the estimate** (the 0.8 safety factor leaves headroom so a small speed dip does not cause a stall), or the lowest tier if nothing fits.
+
+*On every chunk* (`FRAG_BUFFERED` event):
+- Measured speed = `bytes x 8 / download seconds`.
+- It is smoothed with an **EWMA** (exponentially weighted moving average): `new = 0.3 x sample + 0.7 x previous`. Recent samples count more, but one outlier cannot swing the estimate.
+- The result is saved to `localStorage` for the next song.
+
+*Buffer rules* (`updateBufferLevel`, run on time updates, waiting, playing, and each chunk):
+
+| Buffered ahead | Action |
+|---|---|
+| 20 s or more | `stopLoad()`: pause downloading (24 s target minus one 4 s chunk, so one more chunk cannot exceed 24) |
+| under 8 s | Cap quality to the lowest tier and resume loading, to refill fast |
+| 16 s or more | Restore the quality cap from the throughput estimate and resume loading |
+| 8 to 16 s | No change, so quality does not flip every few seconds |
+
+hls.js is also configured with `maxBufferLength: 24` and `backBufferLength: 0` (already-played audio is discarded).
+
+**Division of labor:** hls.js has its own internal bandwidth estimator and picks levels automatically. This code supplies the starting level and sets `autoLevelCapping` as a ceiling, so the custom logic limits hls.js's automatic choice rather than replacing it.
+
+**Player features:** shared sticky bottom bar with title, artist, play/pause, -10 s, +10 s, previous/next (through `READY` songs only), and a seek bar. Autoplay blocked by the browser (`NotAllowedError`) shows "Press play". Fatal hls.js errors show `Playback failed: <details>`.
+
+## Tests for fetching
+
+`adaptivePlayback.test.js` (Node's built-in `node:test`, 5 tests) covers pure functions:
+- No bandwidth estimate falls back to the lowest tier.
+- Tier selection respects the 0.8 factor (400 kbps picks 160k; 1 Mbps picks 320k).
+- A saved estimate is only used for the matching network class.
+- Network hints are used when nothing is saved.
+- EWMA math is correct (`updateEwma(400000, 800000)` = 520000).
+
+These prove the decision logic, not real playback. Real playback (audio time advancing, pause/resume, +10 s, buffer reaching the cap) was verified manually in a browser.
+
+## Issues worth remembering (fetching)
+
+**"Play does nothing," and the chain of causes behind it.** This one took several layers, each found by checking the layer below.
+
+1. *Symptom:* clicking Play did nothing. The Play button was disabled, and it is only enabled when `status == READY` and `manifestUrl` is present.
+2. *Check:* I called `GET /api/songs` from the logged-in browser page and queried Postgres directly. The database had `manifest_url`; the API response did not include it. The gap was between database and API, which pointed at stale backend code.
+3. *Cause:* Kind pods run the image loaded into the cluster. A new local `docker build` does nothing until `kind load docker-image` and a deployment restart.
+4. *Next symptom:* Play worked, but the browser blocked the manifest request from S3 (CORS: the bucket sent no `Access-Control-Allow-Origin` for `localhost:5173`).
+5. *First fix attempt:* added a CORS rule to the bucket. It still failed. A direct fetch showed S3 returning access denied, because the bucket is private.
+6. *Decision:* making the bucket public would fix it but expose every song. I moved delivery behind the authenticated Java proxy and had hls.js send the JWT.
+7. *Verification:* fetched the manifest, a variant playlist, and a chunk through the API with a token. All returned 200.
+8. *Next symptom:* the files arrived but audio did not play, so the pipeline worked and the problem was decoding.
+9. *Diagnosis:* I asked the browser what it supports (`canPlayType` and `MediaSource.isTypeSupported`). The browser used for testing could not play AAC in MPEG-TS but could play MP3.
+10. *Change:* the worker switched to `libmp3lame`. Because `set_processing` skips `READY` songs, existing songs had to be reset to `PENDING` and re-queued from the preserved originals.
+11. *Follow-on error:* `manifestIncompatibleCodecsError`. hls.js reads the `CODECS` attribute in the master playlist, which still declared AAC while the chunks were MP3. The master playlist now declares `mp4a.40.34` (MP3).
+12. *Caveat:* the AAC failure was observed in an embedded browser; I did not confirm it in Chrome or Safari.
+
+**Buffer exceeded the 24-second target.** hls.js buffered past the limit. Added `stopLoad()` at 20 s and `startLoad()` on recovery; the buffer then held at the 24 s watermark.
+
+## Known limitations (fetching)
+
+- `getNetworkKey` labels a connection with no `type` as `cellular`, so desktop Chrome on Wi-Fi (which usually exposes only `effectiveType`) may share a `cellular:4g` key.
+- Browser network hints describe a connection class, not a specific network.
+- Sub-200 ms startup is a design goal, not a guarantee.
+- The proxy adds a hop through the Java service for every chunk; a CDN with signed URLs would remove it at scale.
 # Upcoming Features
 I am actively working on expanding Sandinify with more advanced system features and interactive modules:
 
