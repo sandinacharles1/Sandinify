@@ -1,6 +1,4 @@
-# Sandinify
-
-![Sandinify Tests CI](https://github.com/sandinacharles1/sandinify/actions/workflows/ci.yml/badge.svg)
+# Sandinify [![Sandinify Tests CI](https://github.com/sandinacharles1/Sandinify/actions/workflows/ci.yml/badge.svg)](https://github.com/sandinacharles1/Sandinify/actions/workflows/ci.yml)
 
 **Sandinify** is a distributed audio streaming and media processing backend built with **Java (Spring Boot)**, **Python**, **PostgreSQL**, **Redis**, **AWS S3**, and **Kubernetes**. It ingests raw audio files, transcodes them asynchronously into multi-bitrate HLS (HTTP Live Streaming) chunks via an FFmpeg worker pipeline, and serves authenticated streams with client-side throughput adaptation.
 
@@ -44,10 +42,10 @@ The system is instrumented with **OpenTelemetry** and **Jaeger** for distributed
 ---
 
 ## Homepage Preview
-![Homepage Preview](<!-- PASTE_YOUR_HOMEPAGE_IMAGE_URL_HERE -->)
+<img width="1610" height="841" alt="image" src="https://github.com/user-attachments/assets/99ab926d-2cf9-4b8d-b74f-0e300db04d3b" />
 
 ## Sandinify User Authentication Section
-![User Authentication Diagram](<!-- PASTE_YOUR_AUTH_DIAGRAM_URL_HERE -->)
+![User Authentication Diagram](assets/User_Auth_Diagram.png)
 
 A Spring Boot backend engineered with production scalability and observability practices: a Redis/Lua distributed rate limiter, stateless JWT access tokens paired with revocable hashed refresh tokens, integration testing in CI, and k6 load testing with OpenTelemetry distributed tracing.
 
@@ -125,7 +123,7 @@ JwtAuthFilter (Stateless HMAC-SHA256 verification on protected routes)
 | `RateLimitFilter.java` | Servlet filter enforcing IP-based rate limits prior to authentication |
 | `auth/api/AuthController.java` | REST controller handling signup, login, session refresh, and logout |
 | `songs/api/SongUploadController.java` | Handles multipart ingestion, metadata persistence, and authenticated HLS byte proxying |
-| `songs/Song.java` / `SongRepository.java` | JPA entity and repository tracking track state (`PENDING` → `PROCESSING` → `READY`) |
+| `songs/Song.java` / `songs/SongRepository.java` | JPA entity and repository tracking track state (`PENDING` → `PROCESSING` → `READY`) |
 | `User.java` / `UserRepository.java` | JPA entity and repository for user credentials |
 | `RefreshToken*.java` | Persistence, hashing, validation, and revocation lifecycle for refresh tokens |
 | `JwtService.java` / `JwtAuthFilter.java` | Generates and verifies signed `HS256` JWT access tokens |
@@ -184,13 +182,24 @@ Every `push` and `pull_request` provisions a clean Ubuntu runner, configures Tem
 | **`/me` (JWT Verification)** | 100% check pass rate |
 | **Token Refresh** | 100% check pass rate |
 
-### Main Showcase
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/826969ae-978a-4b74-9881-26e89e612227" width="600" alt="Main Showcase" />
+</p>
 
-| | |
-| :---: | :---: |
-| ![Image 1](<!-- PASTE_IMAGE_1_URL_HERE -->) | ![Image 2](<!-- PASTE_IMAGE_2_URL_HERE -->) |
-| ![Image 3](<!-- PASTE_IMAGE_3_URL_HERE -->) | ![Image 4](<!-- PASTE_IMAGE_4_URL_HERE -->) |
-| ![Image 5](<!-- PASTE_IMAGE_5_URL_HERE -->) | ![Image 6](<!-- PASTE_IMAGE_6_URL_HERE -->) |
+<table>
+  <tr>
+    <td><img src="https://github.com/user-attachments/assets/036c9c25-3988-48e7-9abb-2c07a8fe2259" width="400" alt="Image 1" /></td>
+    <td><img src="https://github.com/user-attachments/assets/c51d664f-ddcc-4657-ace7-4c86f7beba37" width="400" alt="Image 2" /></td>
+  </tr>
+  <tr>
+    <td><img src="https://github.com/user-attachments/assets/65ddef6c-e6d1-48e4-876d-4dcc4befb576" width="400" alt="Image 3" /></td>
+    <td><img src="https://github.com/user-attachments/assets/28d0b019-75a9-4435-8adc-192ca9c6cd27" width="400" alt="Image 4" /></td>
+  </tr>
+  <tr>
+    <td><img src="https://github.com/user-attachments/assets/f18c2e4c-96ff-4113-b074-a7acae6ee018" width="400" alt="Image 5" /></td>
+    <td><img src="https://github.com/user-attachments/assets/c5401e0f-e989-4fab-9116-48ecfdbdc145" width="400" alt="Image 6" /></td>
+  </tr>
+</table>
 
 ---
 
@@ -330,13 +339,13 @@ Grouping Jaeger traces by the `k8s.pod.name` resource attribute confirmed even I
 ## Song Upload System Design
 
 ### Current Upload Design
-![Song Upload Architecture (1)](<!-- PASTE_UPLOAD_ARCH_1_URL_HERE -->)
+<img width="1156" height="1351" alt="Song Upload Architecture (1)" src="https://github.com/user-attachments/assets/6df5a25b-ef5c-4436-81f6-12ef5e0653e2" />
 
 ### Extra Upload Design
-![Song Upload Architecture (2)](<!-- PASTE_UPLOAD_ARCH_2_URL_HERE -->)
+<img width="2399" height="651" alt="Song Upload Architecture (2)" src="https://github.com/user-attachments/assets/7f04f053-d6b5-44c0-9190-65e6bb6b8f13" />
 
 ### Feature Extraction Design
-![Song Upload Architecture](<!-- PASTE_FEATURE_EXTRACTION_URL_HERE -->)
+<img width="596" height="2619" alt="Song Upload Architecture" src="https://github.com/user-attachments/assets/184e37dc-a0f7-4845-8602-8fae1f76f118" />
 
 *(Note: Audio frequency feature extraction training scripts in `song_upload/audio_analysis/` are currently decoupled from the live upload runtime.)*
 
@@ -416,7 +425,7 @@ Executed as an independent Kubernetes Deployment (`backend/transcoding_worker/ma
 
 ## Song Fetching & Adaptive HLS Streaming Design
 
-![Song Upload Architecture (3)](<!-- PASTE_UPLOAD_ARCH_3_URL_HERE -->)
+<img width="900" height="1734" alt="Song Upload Architecture (3)" src="https://github.com/user-attachments/assets/ebf43e25-0187-4727-95b7-968f79fc78f2" />
 
 ### Authenticated HLS Byte Proxy (`GET /api/songs/{songId}/hls/{*assetPath}`)
 * **Zero-Exposure S3 Proxy:** Rather than exposing a public S3 bucket or managing presigned URL expiration across multi-chunk playlists, Spring Boot authenticates the JWT and streams bytes directly from private S3 via `StreamingResponseBody`—preventing heap buffering of audio segments.
